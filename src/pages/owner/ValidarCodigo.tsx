@@ -65,21 +65,25 @@ const ValidarCodigo = () => {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions
-        .invoke("consume-code", { body: { code: code.toUpperCase() } })
-        .catch((e: any) => ({ data: null, error: e }));
-      if (!error && data?.ok) {
-        toast.success("Código validado e consumido");
-        setCode("");
-        return;
-      }
-
-      // Fallback: tentar RPC (requer função no banco com security definer)
+      // Primeira tentativa: RPC transacional (mais confiável)
       const { data: rpc, error: rpcErr } = await supabase.rpc("consume_code_with_amount", {
         p_code: code.toUpperCase(),
         p_salon: salonId,
       });
       if (!rpcErr && rpc?.ok) {
+        const remaining = (rpc as any)?.remaining;
+        toast.success(
+          typeof remaining === "number" ? `Código consumido. Saldo: ${remaining}` : "Código validado e consumido"
+        );
+        setCode("");
+        return;
+      }
+
+      // Fallback: função Edge
+      const { data, error } = await supabase.functions
+        .invoke("consume-code", { body: { code: code.toUpperCase() } })
+        .catch((e: any) => ({ data: null, error: e }));
+      if (!error && data?.ok) {
         toast.success("Código validado e consumido");
         setCode("");
         return;
@@ -113,6 +117,37 @@ const ValidarCodigo = () => {
         .eq("id", codeRow.id);
       if (updErr) throw updErr;
       await supabase.from("cut_redemptions").insert({ code_id: codeRow.id, user_id: codeRow.user_id, salon_id: salonId, redeemed_at: nowIso });
+      // attempt to decrement credits via RPC with security definer
+      const { error: decRpcErr } = await supabase.rpc("decrement_credit_for_user", { p_user_id: codeRow.user_id });
+      if (decRpcErr) {
+        // as last resort, try direct update (may fail due to RLS)
+        const { data: uSub } = await supabase
+          .from("user_subscriptions")
+          .select("plan_id,current_period_start,status")
+          .eq("user_id", codeRow.user_id)
+          .eq("status", "active")
+          .order("current_period_start", { ascending: false })
+          .maybeSingle();
+        if (uSub?.plan_id) {
+          const { data: uc } = await supabase
+            .from("user_credits")
+            .select("remaining")
+            .eq("user_id", codeRow.user_id)
+            .eq("plan_id", uSub.plan_id)
+            .eq("period_start", uSub.current_period_start)
+            .maybeSingle();
+          const rem = Number(uc?.remaining ?? 0);
+          if (rem > 0) {
+            await supabase
+              .from("user_credits")
+              .update({ remaining: rem - 1 })
+              .eq("user_id", codeRow.user_id)
+              .eq("plan_id", uSub.plan_id)
+              .eq("period_start", uSub.current_period_start);
+          }
+        }
+      }
+      await supabase.from("visit_logs").insert({ user_id: codeRow.user_id, salon_id: salonId, code: codeRow.code, visited_at: nowIso });
       toast.success("Código validado e consumido");
       setCode("");
     } catch (err: any) {

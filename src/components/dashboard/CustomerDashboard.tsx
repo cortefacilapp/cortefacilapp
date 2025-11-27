@@ -34,28 +34,85 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
     const loadPlan = async () => {
       const { data: sub } = await supabase
         .from("user_subscriptions")
-        .select("plan_id,status,current_period_start,current_period_end,updated_at")
+        .select("plan_id,status,current_period_start,current_period_end")
         .eq("user_id", user.id)
         .eq("status", "active")
-        .order("updated_at", { ascending: false })
+        .order("current_period_end", { ascending: false })
         .maybeSingle();
       if (sub?.plan_id) {
-        const { data: p } = await supabase
-          .from("plans")
-          .select("name,price,interval,monthly_credits")
-          .eq("id", sub.plan_id)
-          .maybeSingle();
-        if (p) {
-          setPlan({ ...p, status: sub.status });
-          const { data: uc } = await supabase
-            .from("user_credits")
-            .select("remaining")
-            .eq("user_id", user.id)
-            .eq("plan_id", sub.plan_id)
-            .eq("period_start", sub.current_period_start)
+          const { data: p } = await supabase
+            .from("plans")
+            .select("name,price,interval,monthly_credits,cuts_per_month")
+            .eq("id", sub.plan_id)
             .maybeSingle();
-          if (uc?.remaining !== undefined && uc?.remaining !== null) setCredits(Number(uc.remaining));
-          else if (p.monthly_credits !== undefined && p.monthly_credits !== null) setCredits(Number(p.monthly_credits));
+          if (p) {
+            setPlan({ ...p, status: sub.status });
+            const totalCredits = (p as any).monthly_credits ?? (p as any).cuts_per_month ?? null;
+            const { data: uc } = await supabase
+              .from("user_credits")
+              .select("remaining")
+              .eq("user_id", user.id)
+              .eq("plan_id", sub.plan_id)
+              .eq("period_start", sub.current_period_start)
+              .maybeSingle();
+            if (uc?.remaining !== undefined && uc?.remaining !== null) {
+              setCredits(Number(uc.remaining));
+            } else if (totalCredits !== null) {
+              const { count } = await supabase
+                .from("codes")
+                .select("id", { count: "exact" })
+                .eq("user_id", user.id)
+                .gte("used_at", sub.current_period_start as any)
+                .lte("used_at", sub.current_period_end as any)
+                .or("status.eq.used,used.eq.true");
+              const usedCount = Number(count ?? 0);
+              setCredits(Math.max(0, Number(totalCredits) - usedCount));
+            }
+
+          // realtime subscription to credits updates
+          const ch = supabase.channel("credits_and_codes_updates")
+            .on("postgres_changes", {
+              event: "UPDATE",
+              schema: "public",
+              table: "user_credits",
+            }, (payload) => {
+              const row = (payload.new as any) || {};
+              if (row.user_id === user.id && row.plan_id === sub.plan_id && row.period_start === sub.current_period_start) {
+                const newRemaining = row.remaining;
+                if (newRemaining !== undefined && newRemaining !== null) setCredits(Number(newRemaining));
+              }
+            })
+            .on("postgres_changes", {
+              event: "UPDATE",
+              schema: "public",
+              table: "codes",
+            }, async (payload) => {
+              const row = (payload.new as any) || {};
+              if (row.user_id === user.id && (row.status === "used" || row.used === true)) {
+                const { data: p2 } = await supabase
+                  .from("plans")
+                  .select("monthly_credits,cuts_per_month")
+                  .eq("id", sub.plan_id)
+                  .maybeSingle();
+                const totalCredits = (p2 as any)?.monthly_credits ?? (p2 as any)?.cuts_per_month ?? null;
+                if (totalCredits !== null) {
+                  const { count } = await supabase
+                    .from("codes")
+                    .select("id", { count: "exact" })
+                    .eq("user_id", user.id)
+                    .gte("used_at", sub.current_period_start as any)
+                    .lte("used_at", sub.current_period_end as any)
+                    .or("status.eq.used,used.eq.true");
+                  const usedCount = Number(count ?? 0);
+                  setCredits(Math.max(0, Number(totalCredits) - usedCount));
+                }
+              }
+            })
+            .subscribe();
+
+          return () => {
+            try { ch.unsubscribe(); } catch (_) {}
+          };
         }
       }
     };
@@ -109,6 +166,10 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
 
   const generateCode = async () => {
     try {
+      if (credits !== null && Number(credits) <= 0) {
+        toast.error("Sem créditos disponíveis");
+        return;
+      }
       const useEdge = String((import.meta as any).env.VITE_USE_EDGE_FUNCTIONS || "false").toLowerCase() === "true";
       if (useEdge) {
         const { data, error } = await supabase.functions
@@ -239,7 +300,7 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
               <CardDescription>Crie um código para usar no salão</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button className="w-full bg-gradient-primary" onClick={generateCode}>
+              <Button className="w-full bg-gradient-primary" onClick={generateCode} disabled={credits !== null && Number(credits) <= 0}>
                 Gerar Novo Código
               </Button>
               <p className="mt-4 text-xs text-muted-foreground">
