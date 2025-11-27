@@ -23,11 +23,11 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
   const [affiliationName, setAffiliationName] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadName = async () => {
-      const { data } = await supabase.from("profiles").select("name").eq("id", user.id).maybeSingle();
-      setDisplayName(data?.name || user.user_metadata?.name || "");
-    };
-    loadName();
+    try {
+      setDisplayName(user.user_metadata?.name || user.email || "");
+    } catch (_) {
+      setDisplayName(user.email || "");
+    }
   }, [user.id]);
 
   useEffect(() => {
@@ -109,13 +109,17 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
 
   const generateCode = async () => {
     try {
-      const { data, error } = await supabase.functions
-        .invoke("generate-code", { body: {} })
-        .catch((e: any) => ({ data: null, error: e }));
-      if (!error && data?.code) {
-        setGeneratedCode(String(data.code));
-        setCodeModalOpen(true);
-        return;
+      const useEdge = String((import.meta as any).env.VITE_USE_EDGE_FUNCTIONS || "false").toLowerCase() === "true";
+      if (useEdge) {
+        const { data, error } = await supabase.functions
+          .invoke("generate-code", { body: {} })
+          .catch(() => ({ data: null, error: null }));
+        if (data?.code) {
+          setGeneratedCode(String(data.code));
+          setCodeModalOpen(true);
+          return;
+        }
+        // se função edge não estiver disponível, segue para fallback sem logar erro
       }
       const { data: userData } = await supabase.auth.getUser();
       const uid = userData?.user?.id;

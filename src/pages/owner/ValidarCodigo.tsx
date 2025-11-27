@@ -40,7 +40,7 @@ const ValidarCodigo = () => {
           const nowIso = new Date().toISOString();
           const { data: codes } = await supabase
             .from("codes")
-            .select("code,status,expires_at,profiles:profiles(email)")
+            .select("code,status,expires_at")
             .eq("status", "generated")
             .gte("expires_at", nowIso)
             .in("user_id", uids)
@@ -87,22 +87,25 @@ const ValidarCodigo = () => {
 
       // Fallback final: validação básica com permissões do salão
       const nowIso = new Date().toISOString();
-      const { data: codeRow } = await supabase
+      const { data: codeRow, error: selErr } = await supabase
         .from("codes")
         .select("id,user_id,status,expires_at,used,used_by_salon_id")
         .eq("code", code.toUpperCase())
         .maybeSingle();
-      const exp = codeRow?.expires_at ? new Date(codeRow.expires_at) : null;
-      if (!codeRow || codeRow.status !== "generated" || (exp && exp.getTime() < Date.now())) {
-        throw new Error("Código inválido ou expirado");
+      if (selErr) {
+        throw new Error("Sem acesso à tabela de códigos. Verifique políticas RLS");
       }
+      const exp = codeRow?.expires_at ? new Date(codeRow.expires_at) : null;
+      if (!codeRow) throw new Error("Código inexistente");
+      if (codeRow.status !== "generated") throw new Error("Código já utilizado");
+      if (exp && exp.getTime() < Date.now()) throw new Error("Código expirado");
       const { data: aff } = await supabase
         .from("user_affiliations")
         .select("salon_id")
         .eq("user_id", codeRow.user_id)
         .maybeSingle();
       if (!aff?.salon_id || aff.salon_id !== salonId) {
-        throw new Error("Usuário não afiliado ao seu salão");
+        throw new Error("Usuário não afiliado a este salão");
       }
       const { error: updErr } = await supabase
         .from("codes")
@@ -141,12 +144,7 @@ const ValidarCodigo = () => {
                 <div key={idx} className="rounded border p-2 text-sm flex items-center justify-between">
                   <div className="space-y-0.5">
                     <div className="font-mono">{c.code}</div>
-                    <div className="text-muted-foreground">
-                      {(c as any)?.profiles?.email || "sem email"}
-                    </div>
-                    <div className="text-xs">
-                      {String(c.status)}
-                    </div>
+                    <div className="text-xs">{String(c.status)}</div>
                   </div>
                   <div className="text-xs text-right">
                     {(() => {

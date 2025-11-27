@@ -9,8 +9,8 @@ function randomCode(len = 8) {
 }
 
 export default Deno.serve(async (req: Request) => {
-  const url = Deno.env.get("SUPABASE_URL") || "";
-  const key = Deno.env.get("SUPABASE_ANON_KEY") || "";
+  const url = Deno.env.get("EDGE_SUPABASE_URL") || "";
+  const key = Deno.env.get("EDGE_SUPABASE_ANON_KEY") || "";
   const supa = createClient(url, key, {
     global: {
       headers: {
