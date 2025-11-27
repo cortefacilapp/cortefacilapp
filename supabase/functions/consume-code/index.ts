@@ -24,6 +24,16 @@ export default Deno.serve(async (req: Request) => {
   // Check subscription active
   const { data: sub } = await supa.from("subscriptions").select("status, plan_id").eq("salon_id", salon.id).order("created_at", { ascending: false }).maybeSingle();
   if (!sub || sub.status !== "active") return new Response(JSON.stringify({ error: "subscription_inactive" }), { status: 400, headers: { "Content-Type": "application/json" } });
+
+  // Check user affiliation matches this salon
+  const { data: codeRow } = await supa.from("codes").select("user_id, used, used_by_salon_id").eq("code", String(code).toUpperCase()).maybeSingle();
+  const codeUser = codeRow?.user_id || null;
+  if (!codeUser) return new Response(JSON.stringify({ error: "invalid_code" }), { status: 400, headers: { "Content-Type": "application/json" } });
+  if (codeRow?.used) return new Response(JSON.stringify({ error: "code_used" }), { status: 400, headers: { "Content-Type": "application/json" } });
+  const { data: aff } = await supa.from("user_affiliations").select("salon_id").eq("user_id", codeUser).maybeSingle();
+  if (!aff?.salon_id || aff.salon_id !== salon.id) {
+    return new Response(JSON.stringify({ error: "not_affiliated" }), { status: 403, headers: { "Content-Type": "application/json" } });
+  }
   const { data: rpc, error: rpcErr } = await supa.rpc("consume_code_with_amount", { p_code: code, p_salon: salon.id });
   if (rpcErr) return new Response(JSON.stringify({ error: rpcErr.message }), { status: 400, headers: { "Content-Type": "application/json" } });
   await supa.from("audit_logs").insert({ actor_id: uid, action: "consume_code", payload: { code } });

@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -10,6 +11,7 @@ const SalonsBrowse = () => {
   const [loading, setLoading] = useState(true);
   const [salons, setSalons] = useState<any[]>([]);
   const [query, setQuery] = useState("");
+  const [affId, setAffId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -21,6 +23,19 @@ const SalonsBrowse = () => {
         .eq("status", "approved")
         .order("name", { ascending: true });
       if (!error && data) setSalons(data);
+      // load current affiliation
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const uid = userData?.user?.id || null;
+        if (uid) {
+          const { data: aff } = await supabase
+            .from("user_affiliations")
+            .select("salon_id")
+            .eq("user_id", uid)
+            .maybeSingle();
+          setAffId(aff?.salon_id || null);
+        }
+      } catch (_) {}
       setLoading(false);
     };
     load();
@@ -61,13 +76,67 @@ const SalonsBrowse = () => {
           {filtered.map((s) => (
             <Card key={s.id}>
               <CardHeader>
-                <CardTitle className="text-xl">{s.name}</CardTitle>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  {s.name}
+                  {affId === s.id && (
+                    <span className="text-xs rounded px-2 py-0.5 bg-primary/10 text-primary">Afiliado</span>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-1 text-sm">
                   <div>{s.address}</div>
                   <div>{s.city}/{s.state}</div>
                   <div>{s.phone || "sem telefone"}</div>
+                </div>
+                <div className="mt-4">
+                  <Button variant="default" className="w-full" onClick={async () => {
+                    try {
+                      const { data: userData } = await supabase.auth.getUser();
+                      const uid = userData?.user?.id;
+                      if (!uid) { toast.error("Faça login para afiliar-se"); return; }
+                      // Check last affiliation and subscription cycle
+                      const { data: current } = await supabase
+                        .from("user_affiliations")
+                        .select("salon_id, updated_at")
+                        .eq("user_id", uid)
+                        .maybeSingle();
+                      if (current?.salon_id === s.id) {
+                        toast.success("Você já está afiliado a este salão");
+                        return;
+                      }
+                        let canChange = true;
+                        // regra: só permitir troca no fim do ciclo
+                        const { data: sub } = await supabase
+                          .from("subscriptions")
+                          .select("current_period_end,status")
+                          .eq("user_id", uid)
+                          .order("current_period_end", { ascending: false })
+                          .maybeSingle();
+                        const periodEnd = sub?.current_period_end ? new Date(sub.current_period_end) : null;
+                        if (current?.salon_id && current.salon_id !== s.id) {
+                          if (periodEnd && new Date() < periodEnd) {
+                            canChange = false;
+                          }
+                        }
+                      if (!canChange) {
+                        toast.error("Você só pode trocar uma vez por mês ou no fim do ciclo");
+                        return;
+                      }
+                      const { error } = await supabase
+                        .from("user_affiliations")
+                        .upsert({ user_id: uid, salon_id: s.id, updated_at: new Date().toISOString() })
+                        .select("user_id");
+                      if (error) {
+                        toast.error(error.message || "Falha ao afiliar-se");
+                      } else {
+                        setAffId(s.id);
+                        toast.success(`Afiliado ao salão: ${s.name}`);
+                      }
+                    } catch (e) {
+                      toast.error((e as any)?.message || "Erro ao afiliar-se");
+                    }
+                  }} disabled={affId === s.id}>{affId === s.id ? "Afiliado" : "Afiliar-se a este salão"}</Button>
                 </div>
               </CardContent>
             </Card>
@@ -82,4 +151,3 @@ const SalonsBrowse = () => {
 };
 
 export default SalonsBrowse;
-

@@ -20,6 +20,7 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
   const [credits, setCredits] = useState<number | null>(null);
   const [codeModalOpen, setCodeModalOpen] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+  const [affiliationName, setAffiliationName] = useState<string | null>(null);
 
   useEffect(() => {
     const loadName = async () => {
@@ -59,6 +60,32 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
       }
     };
     loadPlan();
+  }, [user.id]);
+
+  useEffect(() => {
+    const loadAffiliation = async () => {
+      try {
+        const { data: aff } = await supabase
+          .from("user_affiliations")
+          .select("salon_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const sid = aff?.salon_id || null;
+        if (sid) {
+          const { data: salon } = await supabase
+            .from("salons")
+            .select("name")
+            .eq("id", sid)
+            .maybeSingle();
+          setAffiliationName(salon?.name || null);
+        } else {
+          setAffiliationName(null);
+        }
+      } catch (_) {
+        setAffiliationName(null);
+      }
+    };
+    loadAffiliation();
   }, [user.id]);
 
   const handleSignOut = async () => {
@@ -167,10 +194,13 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {/* Subscription Card */}
           <Card className="border-2">
-            <CardHeader>
-              <CardTitle>Meu Plano</CardTitle>
-              <CardDescription>Plano Popular - R$ 79,99/mês</CardDescription>
-            </CardHeader>
+          <CardHeader>
+            <CardTitle>Meu Plano</CardTitle>
+            <CardDescription>Plano Popular - R$ 79,99/mês</CardDescription>
+            {affiliationName && (
+              <CardDescription>Afiliado ao salão: {affiliationName}</CardDescription>
+            )}
+          </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 <p className="text-2xl font-bold text-primary">Meu Plano</p>
