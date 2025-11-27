@@ -11,6 +11,7 @@ const ValidarCodigo = () => {
   const [salonId, setSalonId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const [recentCodes, setRecentCodes] = useState<any[]>([]);
 
   useEffect(() => {
     const loadSalon = async () => {
@@ -28,6 +29,25 @@ const ValidarCodigo = () => {
           .order("created_at", { ascending: false })
           .maybeSingle();
         setBlocked(!sub || sub.status !== "active");
+
+        // load recent codes of affiliated users
+        const { data: affUsers } = await supabase
+          .from("user_affiliations")
+          .select("user_id")
+          .eq("salon_id", sid);
+        const uids = (affUsers || []).map((a: any) => a.user_id);
+        if (uids.length) {
+          const nowIso = new Date().toISOString();
+          const { data: codes } = await supabase
+            .from("codes")
+            .select("code,status,expires_at,profiles:profiles(email)")
+            .eq("status", "generated")
+            .gte("expires_at", nowIso)
+            .in("user_id", uids)
+            .order("expires_at", { ascending: false })
+            .limit(10);
+          setRecentCodes(codes || []);
+        }
       }
     };
     loadSalon();
@@ -45,14 +65,53 @@ const ValidarCodigo = () => {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("consume-code", { body: { code: code.toUpperCase() } });
-      if (error) throw error;
-      if (data?.ok) {
+      const { data, error } = await supabase.functions
+        .invoke("consume-code", { body: { code: code.toUpperCase() } })
+        .catch((e: any) => ({ data: null, error: e }));
+      if (!error && data?.ok) {
         toast.success("Código validado e consumido");
         setCode("");
-      } else {
-        throw new Error(data?.error || "Falha ao validar código");
+        return;
       }
+
+      // Fallback: tentar RPC (requer função no banco com security definer)
+      const { data: rpc, error: rpcErr } = await supabase.rpc("consume_code_with_amount", {
+        p_code: code.toUpperCase(),
+        p_salon: salonId,
+      });
+      if (!rpcErr && rpc?.ok) {
+        toast.success("Código validado e consumido");
+        setCode("");
+        return;
+      }
+
+      // Fallback final: validação básica com permissões do salão
+      const nowIso = new Date().toISOString();
+      const { data: codeRow } = await supabase
+        .from("codes")
+        .select("id,user_id,status,expires_at,used,used_by_salon_id")
+        .eq("code", code.toUpperCase())
+        .maybeSingle();
+      const exp = codeRow?.expires_at ? new Date(codeRow.expires_at) : null;
+      if (!codeRow || codeRow.status !== "generated" || (exp && exp.getTime() < Date.now())) {
+        throw new Error("Código inválido ou expirado");
+      }
+      const { data: aff } = await supabase
+        .from("user_affiliations")
+        .select("salon_id")
+        .eq("user_id", codeRow.user_id)
+        .maybeSingle();
+      if (!aff?.salon_id || aff.salon_id !== salonId) {
+        throw new Error("Usuário não afiliado ao seu salão");
+      }
+      const { error: updErr } = await supabase
+        .from("codes")
+        .update({ status: "used", used_at: nowIso, used_by_salon_id: salonId })
+        .eq("id", codeRow.id);
+      if (updErr) throw updErr;
+      await supabase.from("cut_redemptions").insert({ code_id: codeRow.id, user_id: codeRow.user_id, salon_id: salonId, redeemed_at: nowIso });
+      toast.success("Código validado e consumido");
+      setCode("");
     } catch (err: any) {
       toast.error(err.message || "Falha ao validar código");
     } finally {
@@ -74,6 +133,36 @@ const ValidarCodigo = () => {
           </div>
           <Button type="submit" className="w-full bg-gradient-primary" disabled={loading}>{loading ? "Validando..." : "Validar Código"}</Button>
         </form>
+        {!!recentCodes.length && (
+          <div className="mt-6">
+            <div className="text-sm font-medium mb-2">Códigos recentes de afiliados</div>
+            <div className="grid gap-2 md:grid-cols-2">
+              {recentCodes.map((c, idx) => (
+                <div key={idx} className="rounded border p-2 text-sm flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="font-mono">{c.code}</div>
+                    <div className="text-muted-foreground">
+                      {(c as any)?.profiles?.email || "sem email"}
+                    </div>
+                    <div className="text-xs">
+                      {String(c.status)}
+                    </div>
+                  </div>
+                  <div className="text-xs text-right">
+                    {(() => {
+                      const exp = new Date((c as any).expires_at);
+                      const diff = exp.getTime() - Date.now();
+                      if (diff <= 0) return "expirado";
+                      const h = Math.floor(diff / (1000 * 60 * 60));
+                      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                      return `expira em ${h}h ${m}m`;
+                    })()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

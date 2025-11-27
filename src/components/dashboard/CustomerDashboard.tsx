@@ -92,8 +92,14 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
     setLoading(true);
     try {
       await supabase.auth.signOut();
+      try {
+        const pid = (import.meta as any).env.VITE_SUPABASE_PROJECT_ID || "";
+        if (pid) localStorage.removeItem(`sb-${pid}-auth-token`);
+        // também remove possível token antigo
+        localStorage.removeItem("sb-qowmhahuuuxugtcgdryl-auth-token");
+      } catch (_) {}
       toast.success("Logout realizado com sucesso!");
-      navigate("/");
+      navigate("/auth");
     } catch (error: any) {
       toast.error("Erro ao fazer logout");
     } finally {
@@ -103,7 +109,9 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
 
   const generateCode = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke("generate-code", { body: {} });
+      const { data, error } = await supabase.functions
+        .invoke("generate-code", { body: {} })
+        .catch((e: any) => ({ data: null, error: e }));
       if (!error && data?.code) {
         setGeneratedCode(String(data.code));
         setCodeModalOpen(true);
@@ -152,6 +160,7 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
       setGeneratedCode(String(code));
       setCodeModalOpen(true);
     } catch (err: any) {
+      // como fallback já foi tentado acima, informe erro genérico
       toast.error(err?.message || "Erro ao gerar código");
     }
   };

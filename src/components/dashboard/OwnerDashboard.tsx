@@ -22,8 +22,13 @@ const OwnerDashboard = ({ user }: OwnerDashboardProps) => {
     setLoading(true);
     try {
       await supabase.auth.signOut();
+      try {
+        const pid = (import.meta as any).env.VITE_SUPABASE_PROJECT_ID || "";
+        if (pid) localStorage.removeItem(`sb-${pid}-auth-token`);
+        localStorage.removeItem("sb-qowmhahuuuxugtcgdryl-auth-token");
+      } catch (_) {}
       toast.success("Logout realizado com sucesso!");
-      navigate("/");
+      navigate("/auth");
     } catch (error: any) {
       toast.error("Erro ao fazer logout");
     } finally {

@@ -89,7 +89,12 @@ const SalonSignup = () => {
       if (error) throw error;
       toast.success("Cadastro enviado! A liberação de acesso ocorre após aprovação (até 24h).");
       await supabase.auth.signOut();
-      navigate("/");
+      try {
+        const pid = (import.meta as any).env.VITE_SUPABASE_PROJECT_ID || "";
+        if (pid) localStorage.removeItem(`sb-${pid}-auth-token`);
+        localStorage.removeItem("sb-qowmhahuuuxugtcgdryl-auth-token");
+      } catch (_) {}
+      navigate("/auth");
     } catch (err: any) {
       toast.error(err.message || "Erro ao cadastrar salão");
     } finally {
