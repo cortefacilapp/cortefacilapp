@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { format } from "date-fns";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,13 +22,72 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
   const [codeModalOpen, setCodeModalOpen] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [affiliationName, setAffiliationName] = useState<string | null>(null);
+  type VisitItem = { salonName: string; visitedAt: string; code?: string };
+  const [visits, setVisits] = useState<VisitItem[]>([]);
 
   useEffect(() => {
-    try {
-      setDisplayName(user.user_metadata?.name || user.email || "");
-    } catch (_) {
-      setDisplayName(user.email || "");
+    const loadName = async () => {
+      try {
+        const { data: pr } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("id", user.id)
+          .maybeSingle();
+        const name = pr?.name || user.user_metadata?.name || "";
+        setDisplayName(name || user.email || "");
+      } catch (_) {
+        setDisplayName(user.user_metadata?.name || user.email || "");
+      }
+    };
+    loadName();
+  }, [user.id]);
+
+  const loadVisits = async () => {
+    const { data: vCodes } = await supabase
+      .from("codes")
+      .select("used_by_salon_id, used_at, code")
+      .eq("user_id", user.id)
+      .or("status.eq.used,used.eq.true")
+      .order("used_at", { ascending: false })
+      .limit(10);
+
+    const { data: vLogs } = await supabase
+      .from("visit_logs")
+      .select("salon_id, visited_at, code")
+      .eq("user_id", user.id)
+      .order("visited_at", { ascending: false })
+      .limit(10);
+
+    const rowsCodes = vCodes || [];
+    const rowsLogs = vLogs || [];
+    const salonIds = Array.from(new Set([
+      ...rowsCodes.map((r: any) => r.used_by_salon_id).filter(Boolean),
+      ...rowsLogs.map((r: any) => r.salon_id).filter(Boolean),
+    ]));
+    let names: Record<string, string> = {};
+    if (salonIds.length) {
+      const { data: salons } = await supabase
+        .from("salons")
+        .select("id,name")
+        .in("id", salonIds);
+      (salons || []).forEach((s: any) => { names[String(s.id)] = String(s.name || "Salão"); });
     }
+    const itemsCodes: VisitItem[] = rowsCodes.map((r: any) => ({
+      salonName: names[String(r.used_by_salon_id)] || "Salão",
+      visitedAt: String(r.used_at || new Date().toISOString()),
+      code: r.code ? String(r.code) : undefined,
+    }));
+    const itemsLogs: VisitItem[] = rowsLogs.map((r: any) => ({
+      salonName: names[String(r.salon_id)] || "Salão",
+      visitedAt: String(r.visited_at || new Date().toISOString()),
+      code: r.code ? String(r.code) : undefined,
+    }));
+    const items = [...itemsCodes, ...itemsLogs].sort((a, b) => new Date(b.visitedAt).getTime() - new Date(a.visitedAt).getTime());
+    setVisits(items.slice(0, 10));
+  };
+
+  useEffect(() => {
+    loadVisits();
   }, [user.id]);
 
   useEffect(() => {
@@ -333,9 +393,29 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
             <CardDescription>Seus últimos cortes</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Nenhuma visita registrada ainda
-            </p>
+            {visits.length === 0 ? (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Nenhuma visita registrada ainda</p>
+                {affiliationName && (
+                  <div className="rounded border p-3 text-sm flex items-center justify-between">
+                    <div className="font-medium">{affiliationName}</div>
+                    <div className="text-xs text-muted-foreground">Salão afiliado</div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                {visits.map((v, idx) => (
+                  <div key={idx} className="rounded border p-3 text-sm flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <div className="font-medium">{v.salonName}</div>
+                      {v.code && <div className="text-xs text-muted-foreground">Código: {v.code}</div>}
+                    </div>
+                    <div className="text-xs text-right text-muted-foreground">{format(new Date(v.visitedAt), "dd/MM/yyyy HH:mm")}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>
