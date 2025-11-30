@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ const OwnerDashboard = ({ user }: OwnerDashboardProps) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [code, setCode] = useState("");
+  const [monthTotal, setMonthTotal] = useState<number>(0);
 
   const handleSignOut = async () => {
     setLoading(true);
@@ -40,6 +41,53 @@ const OwnerDashboard = ({ user }: OwnerDashboardProps) => {
     e.preventDefault();
     toast.info("Funcionalidade em desenvolvimento");
   };
+
+  useEffect(() => {
+    const loadMonthPayout = async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const uid = userData?.user?.id;
+        if (!uid) return;
+        const { data: salon } = await supabase.from("salons").select("id").eq("owner_id", uid).maybeSingle();
+        if (!salon?.id) return;
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+        const { data } = await supabase
+          .from("payouts")
+          .select("amount,status,period_start,period_end")
+          .eq("salon_id", salon.id)
+          .gte("period_start", start)
+          .lte("period_end", end);
+        const total = (data || []).reduce((acc: number, p: any) => acc + Number(p.amount || 0), 0);
+        if (total === 0) {
+          const { count } = await supabase
+            .from("codes")
+            .select("id", { count: "exact" })
+            .eq("used_by_salon_id", salon.id)
+            .gte("used_at", start)
+            .lte("used_at", end)
+            .or("status.eq.used,used.eq.true");
+          if (Number(count || 0) > 0) {
+            await supabase.rpc("run_monthly_payouts");
+            const { data: after } = await supabase
+              .from("payouts")
+              .select("amount,status,period_start,period_end")
+              .eq("salon_id", salon.id)
+              .gte("period_start", start)
+              .lte("period_end", end);
+            const newTotal = (after || []).reduce((acc: number, p: any) => acc + Number(p.amount || 0), 0);
+            setMonthTotal(newTotal);
+            return;
+          }
+        }
+        setMonthTotal(total);
+      } catch (_) {
+        setMonthTotal(0);
+      }
+    };
+    loadMonthPayout();
+  }, [user.id]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -105,7 +153,7 @@ const OwnerDashboard = ({ user }: OwnerDashboardProps) => {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <p className="text-2xl font-bold text-primary">R$ 0,00</p>
+                <p className="text-2xl font-bold text-primary">R$ {(monthTotal / 100).toFixed(2)}</p>
                 <p className="text-sm text-muted-foreground">este mês</p>
                 <Button className="mt-4 w-full" variant="outline">
                   Ver Detalhes

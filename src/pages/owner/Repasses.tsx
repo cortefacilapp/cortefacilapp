@@ -9,6 +9,7 @@ const Repasses = () => {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -29,6 +30,33 @@ const Repasses = () => {
     };
     load();
   }, []);
+
+  const exportCsv = () => {
+    try {
+      setExporting(true);
+      const rows = [
+        ["id", "status", "amount_cents", "period_start", "period_end", "paid_at"],
+        ...items.map((it) => [
+          String(it.id || ""),
+          String(it.status || ""),
+          String(Number(it.amount || 0)),
+          String(it.period_start || ""),
+          String(it.period_end || ""),
+          String(it.paid_at || ""),
+        ]),
+      ];
+      const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "repasses.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -55,6 +83,9 @@ const Repasses = () => {
               </div>
             ))}
           </div>
+          <div className="mt-4 flex gap-2">
+            <Button variant="outline" onClick={exportCsv} disabled={exporting}>Exportar Relatório (CSV)</Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -79,4 +110,3 @@ const Repasses = () => {
 };
 
 export default Repasses;
-

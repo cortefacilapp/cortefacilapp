@@ -17,7 +17,7 @@ type Row = {
   provider_payment_id: string | null;
   plan_id?: string | null;
   subscription_id?: string | null;
-  profile?: { id: string; name?: string | null; email: string; role?: string | null } | null;
+  profile?: { id: string; full_name?: string | null; name?: string | null; email: string; role?: string | null } | null;
   plan?: { id: string; name: string; price: number; interval?: string | null; monthly_credits?: number | null } | null;
 };
 
@@ -56,35 +56,62 @@ const FaturasPendentes = () => {
       const base = (data || []) as PaymentRow[];
       const enriched: Row[] = await Promise.all(
         base.map(async (p) => {
-          const [{ data: profile }, { data: sub }] = await Promise.all([
-            supabase.from("profiles").select("id,name,email,role").eq("id", p.user_id).maybeSingle(),
+          const [{ data: profile }, { data: subs }] = await Promise.all([
+            supabase.from("profiles").select("id,full_name,name,email,role").eq("id", p.user_id).maybeSingle(),
             supabase
               .from("user_subscriptions")
               .select("id,plan_id,status,created_at")
               .eq("user_id", p.user_id)
-              .order("created_at", { ascending: false })
-              .maybeSingle(),
+              .order("created_at", { ascending: false }),
           ]);
-          let plan: { id: string; name: string; price: number; interval?: string | null; monthly_credits?: number | null } | null = null;
-          if (sub?.plan_id) {
-            const { data: planData } = await supabase
-              .from("plans")
-              .select("id,name,price,interval,monthly_credits")
-              .eq("id", sub.plan_id)
-              .maybeSingle();
-            plan = planData || null;
-          } else {
-            const matched = (plansList || []).find((pl: any) => Number(pl.price) === Number(p.amount));
-            plan = matched || null;
+          const byId = new Map<string, any>();
+          (plansList || []).forEach((pl: any) => byId.set(String(pl.id), pl));
+          const byAmount = (plansList || []).find((pl: any) => Number(pl.price) === Number(p.amount)) || null;
+          // Try to find subscription whose plan price matches payment amount
+          let chosenSub: any = null;
+          if (Array.isArray(subs)) {
+            for (const s of subs) {
+              const pl = byId.get(String(s.plan_id));
+              if (pl && Number(pl.price) === Number(p.amount)) { chosenSub = s; break; }
+            }
+            // fallback to latest if none matched
+            if (!chosenSub && subs.length) chosenSub = subs[0];
           }
-          return { ...p, profile: profile || null, plan: plan || null, plan_id: sub?.plan_id || (plan as any)?.id || null, subscription_id: sub?.id || null } as Row;
+          let plan: { id: string; name: string; price: number; interval?: string | null; monthly_credits?: number | null } | null = null;
+          if (chosenSub?.plan_id) {
+            const pl = byId.get(String(chosenSub.plan_id));
+            plan = pl || null;
+          }
+          // Prefer plan resolved by payment amount to garantir exibição correta
+          if (!plan) plan = byAmount as any;
+          else if (byAmount && Number((plan as any).price) !== Number(p.amount)) plan = byAmount as any;
+          return { ...p, profile: profile || null, plan: plan || null, plan_id: chosenSub?.plan_id || (plan as any)?.id || null, subscription_id: chosenSub?.id || null } as Row;
         })
       );
       const onlyCommon = enriched.filter((r) => {
         const role = (r.profile?.role as string) || "customer";
         return role !== "admin" && role !== "salon_owner";
       });
-      setRows(onlyCommon);
+      const ids = onlyCommon.map((r) => r.user_id).filter(Boolean);
+      let out = onlyCommon;
+      if (ids.length) {
+        const { data: contacts } = await supabase.rpc("user_contacts_for_users", { p_ids: ids });
+        const nameMap = new Map<string, string>();
+        const emailMap = new Map<string, string>();
+        (contacts || []).forEach((n: any) => {
+          if (n && n.user_id) {
+            nameMap.set(String(n.user_id), String(n.full_name || ""));
+            emailMap.set(String(n.user_id), String(n.email || ""));
+          }
+        });
+        out = onlyCommon.map((r) => {
+          const dn = nameMap.get(r.user_id);
+          const em = emailMap.get(r.user_id);
+          const prof = r.profile || { id: r.user_id, email: r.user_id };
+          return { ...r, profile: { ...prof, full_name: dn || prof.full_name || prof.name || null, email: em || prof.email } } as Row;
+        });
+      }
+      setRows(out);
       setLoading(false);
     };
     load();
@@ -177,7 +204,7 @@ const FaturasPendentes = () => {
                     <div className="font-medium">{r.plan?.name || (r.provider?.toUpperCase() || "Pagamento")} • R$ {(Number(r.amount) / 100).toFixed(2)}</div>
                     <div className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString()}</div>
                   </div>
-                  <div className="mt-1">Usuário: {r.profile?.name || "--"}</div>
+                  <div className="mt-1">Usuário: {r.profile?.full_name || r.profile?.name || "--"}</div>
                   <div className="text-xs text-muted-foreground">Email: {r.profile?.email || r.user_id}</div>
                   <div className="mt-1">Comprovante: {r.provider_payment_id || "--"}</div>
                   <div className="mt-1 text-xs text-muted-foreground">

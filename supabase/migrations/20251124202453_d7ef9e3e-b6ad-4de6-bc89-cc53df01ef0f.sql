@@ -186,11 +186,13 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  -- Create profile
-  INSERT INTO public.profiles (id, email)
-  VALUES (NEW.id, NEW.email);
+  INSERT INTO public.profiles (id, email, full_name)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name')
+  );
   
-  -- Assign default customer role
   INSERT INTO public.user_roles (user_id, role)
   VALUES (NEW.id, 'customer');
   

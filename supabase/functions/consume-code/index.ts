@@ -22,7 +22,7 @@ export default Deno.serve(async (req: Request) => {
   if (!salon?.id) return new Response(JSON.stringify({ error: "no_salon" }), { status: 400, headers: { "Content-Type": "application/json" } });
 
   // Check subscription active
-  const { data: sub } = await supa.from("subscriptions").select("status, plan_id").eq("salon_id", salon.id).order("created_at", { ascending: false }).maybeSingle();
+  const { data: sub } = await supa.from("subscriptions").select("id, status, plan_id").eq("salon_id", salon.id).order("created_at", { ascending: false }).maybeSingle();
   if (!sub || sub.status !== "active") return new Response(JSON.stringify({ error: "subscription_inactive" }), { status: 400, headers: { "Content-Type": "application/json" } });
 
   // Check user affiliation matches this salon
@@ -84,7 +84,23 @@ export default Deno.serve(async (req: Request) => {
     .eq("id", codeRow.id);
   if (updErr) return new Response(JSON.stringify({ error: updErr.message }), { status: 400, headers: { "Content-Type": "application/json" } });
 
-  await supa.from("visit_logs").insert({ user_id: codeUser, salon_id: salon.id, code: codeRow.code, visited_at: now.toISOString() });
+  // Compute per-visit amount and 80/20 split using plan price and monthly credits
+  const { data: plan } = await supa.from("plans").select("price, monthly_credits, cuts_per_month").eq("id", uSub.plan_id).maybeSingle();
+  const credits = Number((plan as any)?.monthly_credits ?? (plan as any)?.cuts_per_month ?? 1) || 1;
+  const price = Number((plan as any)?.price ?? 0);
+  const visitAmount = credits > 0 ? Math.round((((price / 100) / credits) * 100)) / 100 : 0;
+  const platformAmount = Math.round(visitAmount * 0.2 * 100) / 100;
+  const salonAmount = visitAmount - platformAmount;
+
+  await supa.from("visit_logs").insert({
+    user_id: codeUser,
+    salon_id: salon.id,
+    subscription_id: sub.id,
+    code_id: codeRow.id,
+    amount: visitAmount,
+    salon_amount: salonAmount,
+    platform_amount: platformAmount,
+  });
   await supa.from("audit_logs").insert({ actor_id: uid, action: "consume_code", payload: { code } });
   return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
 });

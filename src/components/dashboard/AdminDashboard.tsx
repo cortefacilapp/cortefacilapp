@@ -34,11 +34,18 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
         .select("id", { count: "exact", head: true })
         .eq("status", "approved");
       if (typeof act === "number") setActiveCount(act);
-      const { count: users } = await supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("role", "user");
-      if (typeof users === "number") setUsersCount(users);
+      const { data: userCountRpc } = await supabase.rpc("count_common_users");
+      if (Array.isArray(userCountRpc) && userCountRpc.length === 1 && typeof userCountRpc[0] === "number") {
+        setUsersCount(Number(userCountRpc[0]));
+      } else if (typeof (userCountRpc as any) === "number") {
+        setUsersCount(Number(userCountRpc as any));
+      } else {
+        const { count: users } = await supabase
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .in("role", ["user", "customer"]);
+        if (typeof users === "number") setUsersCount(users);
+      }
     };
     loadCounts();
   }, []);
@@ -149,7 +156,7 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              <p className="text-2xl font-bold text-secondary">{usersCount}</p>
+              <p className="text-2xl font-bold">{usersCount}</p>
               <Button className="mt-4 w-full" variant="outline" onClick={() => navigate("/admin/usuarios")}>
                 Ver Detalhes
               </Button>

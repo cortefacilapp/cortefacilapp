@@ -147,7 +147,6 @@ const ValidarCodigo = () => {
           }
         }
       }
-      await supabase.from("visit_logs").insert({ user_id: codeRow.user_id, salon_id: salonId, code: codeRow.code, visited_at: nowIso });
       toast.success("Código validado e consumido");
       setCode("");
     } catch (err: any) {

@@ -54,8 +54,9 @@ security definer
 set search_path = public
 as $$
 declare v_code_id uuid; v_code_user uuid; v_code_status text; v_expires timestamptz;
-        v_aff_salon uuid; v_sub_status text; v_user_plan uuid; v_ps timestamptz; v_pe timestamptz;
+        v_aff_salon uuid; v_sub_id uuid; v_sub_status text; v_user_plan uuid; v_ps timestamptz; v_pe timestamptz;
         v_remaining integer; v_monthly int; v_code_text text;
+        v_plan_price numeric; v_credits int; v_visit_amount numeric; v_platform_amount numeric; v_salon_amount numeric;
 begin
   select id, user_id, status, expires_at, code into v_code_id, v_code_user, v_code_status, v_expires, v_code_text
   from public.codes where code = upper(p_code);
@@ -74,7 +75,7 @@ begin
     return jsonb_build_object('ok', false, 'error', 'not_affiliated');
   end if;
 
-  select status into v_sub_status from public.subscriptions where salon_id = p_salon order by created_at desc limit 1;
+  select id, status into v_sub_id, v_sub_status from public.subscriptions where salon_id = p_salon order by created_at desc limit 1;
   if v_sub_status is null or v_sub_status <> 'active' then
     return jsonb_build_object('ok', false, 'error', 'subscription_inactive');
   end if;
@@ -90,7 +91,11 @@ begin
     return jsonb_build_object('ok', false, 'error', 'outside_period');
   end if;
 
-  select coalesce(monthly_credits, 0) into v_monthly from public.plans where id = v_user_plan;
+  -- Credits per month can be stored as monthly_credits or cuts_per_month depending on migration set
+  select coalesce(monthly_credits, cuts_per_month, 0) into v_monthly from public.plans where id = v_user_plan;
+
+  -- Plan price (BRL) as numeric
+  select price into v_plan_price from public.plans where id = v_user_plan;
 
   -- ensure credits row exists
   if not exists (
@@ -113,14 +118,26 @@ begin
   set status = 'used', used = true, used_at = now(), used_by_salon_id = p_salon
   where id = v_code_id;
 
-  insert into public.visit_logs(user_id, salon_id, code, visited_at)
-  values (v_code_user, p_salon, v_code_text, now());
+  -- Compute per-visit gross amount and 80/20 split (rounded to cents)
+  -- v_amount requested units default to 1 code per validation
+  v_credits := greatest(v_monthly, 1);
+  if v_plan_price is null then
+    v_visit_amount := 0;
+  else
+    -- price stored in cents -> convert to BRL before per-visit calculation
+    v_visit_amount := round(((v_plan_price / 100) / v_credits)::numeric, 2) * greatest(p_amount, 1);
+  end if;
+  v_platform_amount := round((v_visit_amount * 0.2)::numeric, 2);
+  v_salon_amount := v_visit_amount - v_platform_amount;
 
-  return jsonb_build_object('ok', true, 'remaining', v_remaining);
+  -- Register visit ledger row with split amounts
+  insert into public.visit_logs(user_id, salon_id, subscription_id, code_id, amount, salon_amount, platform_amount)
+  values (v_code_user, p_salon, v_sub_id, v_code_id, v_visit_amount, v_salon_amount, v_platform_amount);
+
+  return jsonb_build_object('ok', true, 'remaining', v_remaining, 'amount', v_visit_amount, 'salon_amount', v_salon_amount, 'platform_amount', v_platform_amount);
 end;
 $$;
 
 grant execute on function public.consume_code_with_amount(text, uuid, int) to authenticated;
 
 commit;
-

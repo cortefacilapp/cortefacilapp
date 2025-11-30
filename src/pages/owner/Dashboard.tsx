@@ -8,6 +8,14 @@ const OwnerDashboardPage = () => {
   const [salon, setSalon] = useState<any | null>(null);
   const [validations, setValidations] = useState<any[]>([]);
   const [payouts, setPayouts] = useState<any[]>([]);
+  const [affiliates, setAffiliates] = useState<any[]>([]);
+  const [computedTotals, setComputedTotals] = useState<{ gross: number; platform: number; salon: number }>({ gross: 0, platform: 0, salon: 0 });
+
+  const displayNameFor = (u: any) => {
+    const s = (u && u.full_name) || "";
+    if (typeof s === "string" && s.trim()) return s;
+    return "—";
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -24,19 +32,104 @@ const OwnerDashboardPage = () => {
         const now = new Date();
         const start = new Date(now.getFullYear(), now.getMonth(), 1);
         const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-        const { data: v } = await supabase
-          .from("validations")
-          .select("amount, validated_at")
-          .eq("salon_id", s.id)
-          .gte("validated_at", start.toISOString())
-          .lte("validated_at", end.toISOString());
-        setValidations(v || []);
+        const cycleStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+        // Backfill visit logs para este salão/mês (ignora erro retornado)
+        {
+          const { error: bfErr } = await supabase.rpc("backfill_visit_logs_for_salon", {
+            p_salon: s.id,
+            p_start: start.toISOString(),
+            p_end: end.toISOString(),
+          });
+          // opcionalmente logar bfErr
+        }
+
+        // Calcular usando visit_logs do mês corrente
+        const { data: totalsRow, error: totalsErr } = await supabase.rpc("salon_totals_for_period", {
+          p_salon: s.id,
+          p_start: start.toISOString(),
+          p_end: end.toISOString(),
+        });
+        if (!totalsErr && totalsRow && Array.isArray(totalsRow) && totalsRow.length) {
+          const gross = Number(totalsRow[0]?.amount || 0);
+          const platform = Number(totalsRow[0]?.platform_amount || 0);
+          const salonAmt = Number(totalsRow[0]?.salon_amount || 0);
+          setComputedTotals({ gross, platform, salon: salonAmt });
+        } else {
+          const { data: logs } = await supabase
+            .from("visit_logs")
+            .select("amount, salon_amount, platform_amount, created_at, visited_at")
+            .eq("salon_id", s.id);
+          const l = (logs || []).filter((it: any) => {
+            const d = it.created_at ? new Date(it.created_at) : it.visited_at ? new Date(it.visited_at) : null;
+            if (!d) return false;
+            return d >= start && d <= end;
+          });
+          if (l.length) {
+            const gross = l.reduce((acc: number, it: any) => acc + Number(it.amount || 0), 0);
+            const platform = l.reduce((acc: number, it: any) => acc + Number(it.platform_amount || 0), 0);
+            const salonAmt = l.reduce((acc: number, it: any) => acc + Number(it.salon_amount || 0), 0);
+            setComputedTotals({ gross, platform, salon: salonAmt });
+          } else {
+            const { data: usedCodes } = await supabase
+              .from("codes")
+              .select("id, user_id, used_at, used, status")
+              .eq("used_by_salon_id", s.id)
+              .gte("used_at", start.toISOString())
+              .lte("used_at", end.toISOString())
+              .or("status.eq.used,used.eq.true");
+            const list = usedCodes || [];
+            let gross = 0;
+            for (const c of list) {
+              const usedAt = c.used_at ? new Date(c.used_at) : null;
+              const { data: uSub } = await supabase
+                .from("user_subscriptions")
+                .select("plan_id,status,current_period_start,current_period_end")
+                .eq("user_id", c.user_id)
+                .eq("status", "active")
+                .order("current_period_end", { ascending: false })
+                .maybeSingle();
+              if (!uSub?.plan_id) continue;
+              if (usedAt) {
+                const ps = uSub.current_period_start ? new Date(uSub.current_period_start) : null;
+                const pe = uSub.current_period_end ? new Date(uSub.current_period_end) : null;
+                if (ps && pe && (usedAt < ps || usedAt > pe)) {
+                  continue;
+                }
+              }
+              const { data: plan } = await supabase
+                .from("plans")
+                .select("price,monthly_credits,cuts_per_month")
+                .eq("id", uSub.plan_id)
+                .maybeSingle();
+              const credits = Number((plan as any)?.monthly_credits ?? (plan as any)?.cuts_per_month ?? 1) || 1;
+              const priceCents = Number((plan as any)?.price ?? 0);
+              if (priceCents > 0 && credits > 0) {
+                const perVisit = Math.round((((priceCents / 100) / credits) * 100)) / 100;
+                gross += perVisit;
+              }
+            }
+            const platform = Math.round(gross * 0.2 * 100) / 100;
+            const salonAmt = gross - platform;
+            setComputedTotals({ gross, platform, salon: salonAmt });
+          }
+        }
+
         const { data: p } = await supabase
           .from("payouts")
           .select("amount, status, paid_at")
           .eq("salon_id", s.id)
           .order("paid_at", { ascending: false });
         setPayouts(p || []);
+
+        const { data: userData } = await supabase.auth.getUser();
+        const ownerId = userData?.user?.id || null;
+        if (ownerId) {
+          const { data: aff } = await supabase.rpc("affiliates_for_owner", { p_owner: ownerId });
+          setAffiliates(aff || []);
+        } else {
+          setAffiliates([]);
+        }
       }
       setLoading(false);
     };
@@ -44,13 +137,13 @@ const OwnerDashboardPage = () => {
   }, []);
 
   const totals = useMemo(() => {
-    const monthValidations = validations.reduce((acc, v) => acc + Number(v.amount || 0), 0);
-    const platformShare = monthValidations * 0.2;
-    const salonShare = monthValidations * 0.8;
+    const monthValidations = computedTotals.gross;
+    const platformShare = computedTotals.platform;
+    const salonShare = computedTotals.salon;
     const pendingPayouts = payouts.filter((p) => p.status === "pending").reduce((acc, p) => acc + Number(p.amount || 0), 0);
     const paidPayouts = payouts.filter((p) => p.status === "paid").reduce((acc, p) => acc + Number(p.amount || 0), 0);
     return { monthValidations, platformShare, salonShare, pendingPayouts, paidPayouts };
-  }, [validations, payouts]);
+  }, [computedTotals, payouts]);
 
   if (loading) {
     return (
@@ -77,7 +170,7 @@ const OwnerDashboardPage = () => {
           <CardDescription>Bruto acumulado</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold">R$ {(totals.monthValidations / 100).toFixed(2)}</p>
+          <p className="text-3xl font-bold">R$ {totals.monthValidations.toFixed(2)}</p>
         </CardContent>
       </Card>
       <Card>
@@ -86,7 +179,7 @@ const OwnerDashboardPage = () => {
           <CardDescription>Após taxa da plataforma</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold">R$ {(totals.salonShare / 100).toFixed(2)}</p>
+          <p className="text-3xl font-bold">R$ {totals.salonShare.toFixed(2)}</p>
         </CardContent>
       </Card>
       <Card className="md:col-span-3">
@@ -98,12 +191,33 @@ const OwnerDashboardPage = () => {
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded border p-3">
               <div className="text-sm text-muted-foreground">Pendentes</div>
-              <div className="text-2xl font-bold">R$ {(totals.pendingPayouts / 100).toFixed(2)}</div>
+              <div className="text-2xl font-bold">R$ {totals.pendingPayouts.toFixed(2)}</div>
             </div>
             <div className="rounded border p-3">
               <div className="text-sm text-muted-foreground">Recebidos</div>
-              <div className="text-2xl font-bold">R$ {(totals.paidPayouts / 100).toFixed(2)}</div>
+              <div className="text-2xl font-bold">R$ {totals.paidPayouts.toFixed(2)}</div>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="md:col-span-3">
+        <CardHeader>
+          <CardTitle>Afiliados do salão (ciclo atual)</CardTitle>
+          <CardDescription>Usuários comuns afiliados a este salão</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {affiliates.map((u) => (
+              <div key={u.user_id || u.id} className="rounded border p-3">
+                <div className="font-medium">{displayNameFor(u)}</div>
+                <div className="text-sm text-muted-foreground">Afiliado em: {u.affiliated_at ? new Date(u.affiliated_at).toLocaleDateString() : "--"}</div>
+                <div className="text-sm">Validações no ciclo atual: {u.used_count}</div>
+              </div>
+            ))}
+            {!affiliates.length && (
+              <div className="text-sm text-muted-foreground">Nenhum usuário afiliado</div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -112,4 +226,3 @@ const OwnerDashboardPage = () => {
 };
 
 export default OwnerDashboardPage;
-
