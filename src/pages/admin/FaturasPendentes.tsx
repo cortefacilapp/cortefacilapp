@@ -202,7 +202,18 @@ const FaturasPendentes = () => {
                 <div key={r.id} className="rounded border p-3 text-sm">
                   <div className="flex items-center justify-between">
                     <div className="font-medium">{r.plan?.name || (r.provider?.toUpperCase() || "Pagamento")} • R$ {(Number(r.amount) / 100).toFixed(2)}</div>
-                    <div className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">{
+                      new Date(r.created_at).toLocaleString("pt-BR", {
+                        timeZone: "America/Sao_Paulo",
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                        hour12: false,
+                      })
+                    }</div>
                   </div>
                   <div className="mt-1">Usuário: {r.profile?.full_name || r.profile?.name || "--"}</div>
                   <div className="text-xs text-muted-foreground">Email: {r.profile?.email || r.user_id}</div>
