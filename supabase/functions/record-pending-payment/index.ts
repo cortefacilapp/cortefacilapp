@@ -33,7 +33,7 @@ export default Deno.serve(async (req: Request) => {
     uid = prof?.id || null;
   }
 
-  if (!uid || !amount) {
+  if (!uid) {
     return new Response(JSON.stringify({ error: "missing_params" }), { status: 400, headers: { "Content-Type": "application/json" } });
   }
 
@@ -58,12 +58,48 @@ export default Deno.serve(async (req: Request) => {
     }
   }
 
+  // Resolve plan price if not provided amount
+  let gross = amount;
+  if (!gross && plan_id) {
+    const { data: plan } = await client.from("plans").select("price").eq("id", plan_id).maybeSingle();
+    gross = Number((plan as any)?.price ?? 0) / 100;
+  }
+  const platform_amount = Math.round(gross * 0.2 * 100) / 100;
+  const salon_amount = Math.max(0, gross - platform_amount);
+
+  // PIX: aprova imediatamente e ativa assinatura
+  if (provider === "pix") {
+    // ensure subscription active
+    if (plan_id) {
+      const now = new Date();
+      const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const { data: subRow } = await client
+        .from("user_subscriptions")
+        .select("id,status")
+        .eq("user_id", uid)
+        .eq("plan_id", plan_id)
+        .maybeSingle();
+      if (!subRow) {
+        await client.from("user_subscriptions").insert({ user_id: uid, plan_id, status: "active", current_period_start: now.toISOString(), current_period_end: end.toISOString() });
+      } else {
+        await client.from("user_subscriptions").update({ status: "active", current_period_start: now.toISOString(), current_period_end: end.toISOString() }).eq("id", subRow.id);
+      }
+    }
+    const { data: payApproved, error: payErr } = await client
+      .from("payments")
+      .insert({ user_id: uid, amount: gross, currency, status: "approved", provider, provider_payment_id, platform_amount, salon_amount })
+      .select("id")
+      .maybeSingle();
+    if (payErr) return new Response(JSON.stringify({ error: payErr.message }), { status: 400, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ id: payApproved?.id, approved: true }), { headers: { "Content-Type": "application/json" } });
+  }
+
+  // Outros provedores: registrar pendente
   const { data, error } = await client
     .from("payments")
-    .insert({ user_id: uid, amount: Math.round(amount * 100), currency, status: "pending", provider, provider_payment_id })
+    .insert({ user_id: uid, amount: Math.round(gross * 100), currency, status: "pending", provider, provider_payment_id })
     .select("id")
     .maybeSingle();
-
   if (error) return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { "Content-Type": "application/json" } });
-  return new Response(JSON.stringify({ id: data?.id }), { headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify({ id: data?.id, approved: false }), { headers: { "Content-Type": "application/json" } });
 });

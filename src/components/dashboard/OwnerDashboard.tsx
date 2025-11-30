@@ -51,43 +51,134 @@ const OwnerDashboard = ({ user }: OwnerDashboardProps) => {
         const { data: salon } = await supabase.from("salons").select("id").eq("owner_id", uid).maybeSingle();
         if (!salon?.id) return;
         const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
-        const { data } = await supabase
-          .from("payouts")
-          .select("amount,status,period_start,period_end")
-          .eq("salon_id", salon.id)
-          .gte("period_start", start)
-          .lte("period_end", end);
-        const total = (data || []).reduce((acc: number, p: any) => acc + Number(p.amount || 0), 0);
-        if (total === 0) {
-          const { count } = await supabase
-            .from("codes")
-            .select("id", { count: "exact" })
-            .eq("used_by_salon_id", salon.id)
-            .gte("used_at", start)
-            .lte("used_at", end)
-            .or("status.eq.used,used.eq.true");
-          if (Number(count || 0) > 0) {
-            await supabase.rpc("run_monthly_payouts");
-            const { data: after } = await supabase
-              .from("payouts")
-              .select("amount,status,period_start,period_end")
-              .eq("salon_id", salon.id)
-              .gte("period_start", start)
-              .lte("period_end", end);
-            const newTotal = (after || []).reduce((acc: number, p: any) => acc + Number(p.amount || 0), 0);
-            setMonthTotal(newTotal);
-            return;
+        const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+        // Backfill visit_logs do mês
+        await supabase
+          .rpc("backfill_visit_logs_for_salon", { p_salon: salon.id, p_start: startDate.toISOString(), p_end: endDate.toISOString() })
+          .catch(() => {});
+
+        // Primeiro: somar visit_logs via RPC segura
+        const { data: totalsRow } = await supabase.rpc("salon_totals_for_period", {
+          p_salon: salon.id,
+          p_start: startDate.toISOString(),
+          p_end: endDate.toISOString(),
+        });
+        if (totalsRow && Array.isArray(totalsRow) && totalsRow.length) {
+          const gross = Number(totalsRow[0]?.amount || 0);
+          setMonthTotal(Math.round(gross * 100));
+          return;
+        }
+
+        // Segundo: somar visit_logs direto
+        const { data: logs } = await supabase
+          .from("visit_logs")
+          .select("amount, created_at, visited_at")
+          .eq("salon_id", salon.id);
+        const l = (logs || []).filter((it: any) => {
+          const d = it.created_at ? new Date(it.created_at) : it.visited_at ? new Date(it.visited_at) : null;
+          return d && d >= startDate && d <= endDate;
+        });
+        if (l.length) {
+          const gross = l.reduce((acc: number, it: any) => acc + Number(it.amount || 0), 0);
+          setMonthTotal(Math.round(gross * 100));
+          return;
+        }
+
+        // Terceiro: calcular pelos códigos usados + planos (preço em centavos)
+        const { data: usedCodes } = await supabase
+          .from("codes")
+          .select("id, user_id, used_at, used, status")
+          .eq("used_by_salon_id", salon.id)
+          .gte("used_at", startDate.toISOString())
+          .lte("used_at", endDate.toISOString())
+          .or("status.eq.used,used.eq.true");
+        const list = usedCodes || [];
+        let grossDec = 0;
+        for (const c of list) {
+          const usedAt = c.used_at ? new Date(c.used_at) : null;
+          const { data: uSub } = await supabase
+            .from("user_subscriptions")
+            .select("plan_id,status,current_period_start,current_period_end")
+            .eq("user_id", c.user_id)
+            .eq("status", "active")
+            .order("current_period_end", { ascending: false })
+            .maybeSingle();
+          let planId: string | null = uSub?.plan_id || null;
+          if (!planId) {
+            const { data: pay } = await supabase
+              .from("payments")
+              .select("amount,status,created_at")
+              .eq("user_id", c.user_id)
+              .in("status", ["approved", "pending"]) as any;
+            const within = (pay || []).filter((p: any) => {
+              const d = p.created_at ? new Date(p.created_at) : null;
+              return d && d >= startDate && d <= endDate;
+            });
+            if (within.length) {
+              const { data: plans } = await supabase
+                .from("plans")
+                .select("id,price,monthly_credits,cuts_per_month,active");
+              const amt = Number(within[0].amount || 0);
+              const byAmount = (plans || []).find((pl: any) => {
+                const pc = Number(pl.price || 0);
+                return pc === Math.round(amt * 100) || Math.round(pc / 100) === Math.round(amt);
+              });
+              planId = byAmount?.id || null;
+            }
+          }
+          if (!planId) continue;
+          if (usedAt) {
+            const ps = uSub?.current_period_start ? new Date(uSub.current_period_start) : null;
+            const pe = uSub?.current_period_end ? new Date(uSub.current_period_end) : null;
+            if (ps && pe && (usedAt < ps || usedAt > pe)) {
+              continue;
+            }
+          }
+          const { data: plan } = await supabase
+            .from("plans")
+            .select("price,monthly_credits,cuts_per_month")
+            .eq("id", planId)
+            .maybeSingle();
+          const credits = Number((plan as any)?.monthly_credits ?? (plan as any)?.cuts_per_month ?? 1) || 1;
+          const priceCents = Number((plan as any)?.price ?? 0);
+          if (priceCents > 0 && credits > 0) {
+            const perVisit = Math.round((((priceCents / 100) / credits) * 100)) / 100;
+            grossDec += perVisit;
           }
         }
-        setMonthTotal(total);
+        setMonthTotal(Math.round(grossDec * 100));
       } catch (_) {
         setMonthTotal(0);
       }
     };
     loadMonthPayout();
   }, [user.id]);
+
+  useEffect(() => {
+    const subRealtime = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData?.user?.id;
+      if (!uid) return;
+      const { data: salon } = await supabase.from("salons").select("id").eq("owner_id", uid).maybeSingle();
+      if (!salon?.id) return;
+      const channel = supabase
+        .channel(`owner-realtime-${salon.id}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "visit_logs", filter: `salon_id=eq.${salon.id}` }, () => {
+          // trigger reload
+          setMonthTotal((v) => v);
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "codes", filter: `used_by_salon_id=eq.${salon.id}` }, () => {
+          setMonthTotal((v) => v);
+        })
+        .subscribe();
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+    subRealtime();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">

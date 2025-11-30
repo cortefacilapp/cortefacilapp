@@ -14,6 +14,7 @@ import SaloesAtivos from "./pages/admin/SaloesAtivos";
 import SaloesPendentes from "./pages/admin/SaloesPendentes";
 import UsuariosAtivos from "./pages/admin/UsuariosAtivos";
 import FaturasPendentes from "./pages/admin/FaturasPendentes";
+import PlanosAdmin from "./pages/admin/PlanosAdmin";
 import OwnerLayout from "./pages/owner/OwnerLayout";
 import AdminDashboardPage from "./pages/admin/Dashboard";
 import OwnerDashboardPage from "./pages/owner/Dashboard";
@@ -44,8 +45,9 @@ const App = () => (
             <Route path="financeiro" element={<Financeiro />} />
             <Route path="saloes" element={<SaloesAtivos />} />
             <Route path="pendentes" element={<SaloesPendentes />} />
-            <Route path="usuarios" element={<UsuariosAtivos />} />
-            <Route path="faturas" element={<FaturasPendentes />} />
+          <Route path="usuarios" element={<UsuariosAtivos />} />
+          <Route path="planos" element={<PlanosAdmin />} />
+          <Route path="faturas" element={<FaturasPendentes />} />
           </Route>
           <Route path="/owner" element={<OwnerLayout />}>
             <Route path="dashboard" element={<OwnerDashboardPage />} />

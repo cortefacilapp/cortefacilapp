@@ -72,6 +72,7 @@ const AdminLayout = () => {
               <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin/saloes")}>Salões Ativos</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin/pendentes")}>Salões Pendentes</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin/usuarios")}>Usuários</Button>
+              <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin/planos")}>Planos</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin/faturas")}>Faturas Pendentes</Button>
             </nav>
           </div>
@@ -88,6 +89,7 @@ const AdminLayout = () => {
               <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/saloes"); }}>Salões Ativos</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/pendentes"); }}>Salões Pendentes</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/usuarios"); }}>Usuários</Button>
+              <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/planos"); }}>Planos</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/faturas"); }}>Faturas Pendentes</Button>
             </div>
           </div>

@@ -84,14 +84,22 @@ const Dashboard = () => {
     );
   }
 
-  if (userRole === "admin") {
-    navigate("/admin");
-    return null;
-  }
+  useEffect(() => {
+    if (!loading) {
+      if (userRole === "admin") {
+        navigate("/admin");
+      } else if (userRole === "owner") {
+        navigate("/owner/validar");
+      }
+    }
+  }, [loading, userRole, navigate]);
 
-  if (userRole === "owner") {
-    navigate("/owner/validar");
-    return null;
+  if (userRole === "admin" || userRole === "owner") {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return <CustomerDashboard user={user!} />;

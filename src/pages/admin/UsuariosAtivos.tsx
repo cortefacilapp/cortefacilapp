@@ -9,6 +9,8 @@ const UsuariosAtivos = () => {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<any[]>([]);
   const [selected, setSelected] = useState<any | null>(null);
+  const [planInfo, setPlanInfo] = useState<any | null>(null);
+  const [affiliation, setAffiliation] = useState<any | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -46,6 +48,47 @@ const UsuariosAtivos = () => {
     };
     load();
   }, []);
+
+  useEffect(() => {
+    const loadDetails = async () => {
+      if (!selected?.id) { setPlanInfo(null); setAffiliation(null); return; }
+      // Plano ativo
+      const { data: sub } = await supabase
+        .from("user_subscriptions")
+        .select("plan_id,status,current_period_start,current_period_end")
+        .eq("user_id", selected.id)
+        .eq("status", "active")
+        .order("current_period_end", { ascending: false })
+        .maybeSingle();
+      if (sub?.plan_id) {
+        const { data: p } = await supabase
+          .from("plans")
+          .select("name,price,monthly_credits,cuts_per_month")
+          .eq("id", sub.plan_id)
+          .maybeSingle();
+        setPlanInfo({ name: (p as any)?.name, price: (p as any)?.price, credits: (p as any)?.monthly_credits ?? (p as any)?.cuts_per_month ?? 0 });
+      } else {
+        setPlanInfo(null);
+      }
+      // Afiliação
+      const { data: aff } = await supabase
+        .from("user_affiliations")
+        .select("salon_id")
+        .eq("user_id", selected.id)
+        .maybeSingle();
+      if (aff?.salon_id) {
+        const { data: salon } = await supabase
+          .from("salons")
+          .select("name")
+          .eq("id", aff.salon_id)
+          .maybeSingle();
+        setAffiliation({ id: aff.salon_id, name: (salon as any)?.name || "Salão" });
+      } else {
+        setAffiliation(null);
+      }
+    };
+    loadDetails();
+  }, [selected?.id]);
 
   if (loading) {
     return (
@@ -85,6 +128,18 @@ const UsuariosAtivos = () => {
               <div>Email: {selected.email}</div>
               <div>Nome: {selected.full_name || selected.name || "--"}</div>
               <div>Perfil: {selected.role}</div>
+              <div className="mt-2">
+                {planInfo ? (
+                  <div className="text-sm inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">
+                    Plano ativo: {planInfo.name} • R$ {(Number(planInfo.price) / 100).toFixed(2)}/mês • {Number(planInfo.credits || 0)} cortes/mês
+                  </div>
+                ) : (
+                  <div className="text-sm inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">Sem plano ativo</div>
+                )}
+              </div>
+              <div className="mt-1 text-sm">
+                Salão de afiliação: {affiliation?.name || "--"}
+              </div>
               <Button className="w-full" variant="outline" onClick={() => setSelected(null)}>Fechar</Button>
             </div>
           )}

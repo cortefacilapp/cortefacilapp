@@ -28,6 +28,7 @@ const Auth = () => {
   const [newPassword, setNewPassword] = useState("");
   const [newPasswordConfirm, setNewPasswordConfirm] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
+  const [successOpen, setSuccessOpen] = useState(false);
   const toIsoDate = (s: string) => {
     const digitsOnly = s.replace(/\D/g, "");
     if (digitsOnly.length === 8) {
@@ -94,8 +95,16 @@ const Auth = () => {
 
       if (error) throw error;
 
-      const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (!signInErr && signInData.user) {
+      let { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (signInErr && (signInErr as any)?.message?.toLowerCase().includes("confirm")) {
+        setSuccessOpen(true);
+        setTab("signin");
+        setTimeout(() => {
+          try { setSuccessOpen(false); } catch (_) {}
+          navigate("/auth");
+        }, 1500);
+      }
+      if (!signInErr && signInData?.user) {
         await supabase
           .from("profiles")
           .upsert({
@@ -107,10 +116,24 @@ const Auth = () => {
             address: address || null,
             birthdate: toIsoDate(birthdate) || null,
           });
-        toast.success("Conta criada com sucesso!");
-        navigate(isSalon ? "/signup/salao" : "/dashboard");
+        if (isSalon) {
+          toast.success("Conta criada com sucesso!");
+          navigate("/signup/salao");
+        } else {
+          setSuccessOpen(true);
+          setTab("signin");
+          setTimeout(() => {
+            try { setSuccessOpen(false); } catch (_) {}
+            navigate("/auth");
+          }, 1500);
+        }
       } else {
-        toast.success("Conta criada! Verifique seu email para acessar.");
+        setSuccessOpen(true);
+        setTab("signin");
+        setTimeout(() => {
+          try { setSuccessOpen(false); } catch (_) {}
+          navigate("/auth");
+        }, 1500);
       }
     } catch (error: any) {
       toast.error(error.message || "Erro ao criar conta");
@@ -124,10 +147,15 @@ const Auth = () => {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      let { data: siData, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
+
+      if (error && (error as any)?.message?.toLowerCase().includes("confirm")) {
+        toast.error("Email não confirmado. Use a aba Cadastrar para finalizar o cadastro.");
+        return;
+      }
 
       if (error) throw error;
 
@@ -315,6 +343,14 @@ const Auth = () => {
             </div>
             <Button type="submit" className="w-full" disabled={resetLoading}>{resetLoading ? "Atualizando..." : "Atualizar senha"}</Button>
           </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Conta criada com sucesso</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm">Redirecionando para a página de login...</div>
         </DialogContent>
       </Dialog>
     </div>

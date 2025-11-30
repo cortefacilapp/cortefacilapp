@@ -89,7 +89,30 @@ const OwnerDashboardPage = () => {
                 .eq("status", "active")
                 .order("current_period_end", { ascending: false })
                 .maybeSingle();
-              if (!uSub?.plan_id) continue;
+              let planId: string | null = uSub?.plan_id || null;
+              if (!planId) {
+                const { data: pay } = await supabase
+                  .from("payments")
+                  .select("amount,status,created_at")
+                  .eq("user_id", c.user_id)
+                  .in("status", ["approved", "pending"]) as any;
+                const within = (pay || []).filter((p: any) => {
+                  const d = p.created_at ? new Date(p.created_at) : null;
+                  return d && d >= start && d <= end;
+                });
+            if (within.length) {
+              const { data: plans } = await supabase
+                .from("plans")
+                .select("id,price,monthly_credits,cuts_per_month,active");
+              const amt = Number(within[0].amount || 0);
+              const byAmount = (plans || []).find((pl: any) => {
+                const pc = Number(pl.price || 0);
+                return pc === Math.round(amt * 100) || Math.round(pc / 100) === Math.round(amt);
+              });
+              planId = byAmount?.id || null;
+            }
+              }
+              if (!planId) continue;
               if (usedAt) {
                 const ps = uSub.current_period_start ? new Date(uSub.current_period_start) : null;
                 const pe = uSub.current_period_end ? new Date(uSub.current_period_end) : null;
@@ -100,7 +123,7 @@ const OwnerDashboardPage = () => {
               const { data: plan } = await supabase
                 .from("plans")
                 .select("price,monthly_credits,cuts_per_month")
-                .eq("id", uSub.plan_id)
+                .eq("id", planId)
                 .maybeSingle();
               const credits = Number((plan as any)?.monthly_credits ?? (plan as any)?.cuts_per_month ?? 1) || 1;
               const priceCents = Number((plan as any)?.price ?? 0);
@@ -134,7 +157,169 @@ const OwnerDashboardPage = () => {
       setLoading(false);
     };
     load();
+    return () => {};
   }, []);
+
+  useEffect(() => {
+    if (!salon?.id) return;
+    const channel = supabase
+      .channel(`owner-dashboard-${salon.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "visit_logs", filter: `salon_id=eq.${salon.id}` },
+        async () => {
+          const now = new Date();
+          const start = new Date(now.getFullYear(), now.getMonth(), 1);
+          const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+          const { data: totalsRow } = await supabase.rpc("salon_totals_for_period", {
+            p_salon: salon.id,
+            p_start: start.toISOString(),
+            p_end: end.toISOString(),
+          });
+          if (totalsRow && Array.isArray(totalsRow) && totalsRow.length) {
+            const gross = Number(totalsRow[0]?.amount || 0);
+            const platform = Number(totalsRow[0]?.platform_amount || 0);
+            const salonAmt = Number(totalsRow[0]?.salon_amount || 0);
+            setComputedTotals({ gross, platform, salon: salonAmt });
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "codes", filter: `used_by_salon_id=eq.${salon.id}` },
+        async () => {
+          const now = new Date();
+          const start = new Date(now.getFullYear(), now.getMonth(), 1);
+          const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+          const { data: usedCodes } = await supabase
+            .from("codes")
+            .select("id, user_id, used_at, used, status")
+            .eq("used_by_salon_id", salon.id)
+            .gte("used_at", start.toISOString())
+            .lte("used_at", end.toISOString())
+            .or("status.eq.used,used.eq.true");
+          const list = usedCodes || [];
+          let gross = 0;
+          for (const c of list) {
+            const usedAt = c.used_at ? new Date(c.used_at) : null;
+            const { data: uSub } = await supabase
+              .from("user_subscriptions")
+              .select("plan_id,status,current_period_start,current_period_end")
+              .eq("user_id", c.user_id)
+              .eq("status", "active")
+              .order("current_period_end", { ascending: false })
+              .maybeSingle();
+            let planId: string | null = uSub?.plan_id || null;
+            if (!planId) {
+              const { data: pay } = await supabase
+                .from("payments")
+                .select("amount,status,created_at")
+                .eq("user_id", c.user_id)
+                .in("status", ["approved", "pending"]) as any;
+              const within = (pay || []).filter((p: any) => {
+                const d = p.created_at ? new Date(p.created_at) : null;
+                return d && d >= start && d <= end;
+              });
+              if (within.length) {
+                const { data: plans } = await supabase
+                  .from("plans")
+                  .select("id,price,monthly_credits,cuts_per_month,active");
+                const byAmount = (plans || []).find((pl: any) => Number(pl.price) === Number(within[0].amount));
+                planId = byAmount?.id || null;
+              }
+            }
+            if (!planId) continue;
+            if (usedAt) {
+              const ps = uSub?.current_period_start ? new Date(uSub.current_period_start) : null;
+              const pe = uSub?.current_period_end ? new Date(uSub.current_period_end) : null;
+              if (ps && pe && (usedAt < ps || usedAt > pe)) {
+                continue;
+              }
+            }
+            const { data: plan } = await supabase
+              .from("plans")
+              .select("price,monthly_credits,cuts_per_month")
+              .eq("id", planId)
+              .maybeSingle();
+            const credits = Number((plan as any)?.monthly_credits ?? (plan as any)?.cuts_per_month ?? 1) || 1;
+            const priceCents = Number((plan as any)?.price ?? 0);
+            if (priceCents > 0 && credits > 0) {
+              const perVisit = Math.round((((priceCents / 100) / credits) * 100)) / 100;
+              gross += perVisit;
+            }
+          }
+          const platform = Math.round(gross * 0.2 * 100) / 100;
+          const salonAmt = gross - platform;
+          setComputedTotals({ gross, platform, salon: salonAmt });
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [salon?.id]);
+
+  useEffect(() => {
+    const computeFromAffiliates = async () => {
+      if (!salon?.id) return;
+      if (!affiliates?.length) return;
+      if (computedTotals.gross > 0) return;
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      let gross = 0;
+      for (const u of affiliates) {
+        const usedCount = Number(u.used_count || 0);
+        if (!usedCount) continue;
+        const { data: uSub } = await supabase
+          .from("user_subscriptions")
+          .select("plan_id,status,current_period_start,current_period_end")
+          .eq("user_id", u.user_id || u.id)
+          .eq("status", "active")
+          .order("current_period_end", { ascending: false })
+          .maybeSingle();
+        let planId: string | null = uSub?.plan_id || null;
+        if (!planId) {
+          const { data: pay } = await supabase
+            .from("payments")
+            .select("amount,status,created_at")
+            .eq("user_id", u.user_id || u.id)
+            .in("status", ["approved", "pending"]) as any;
+          const within = (pay || []).filter((p: any) => {
+            const d = p.created_at ? new Date(p.created_at) : null;
+            return d && d >= start && d <= end;
+          });
+          if (within.length) {
+            const { data: plans } = await supabase
+              .from("plans")
+              .select("id,price,monthly_credits,cuts_per_month,active");
+            const amt = Number(within[0].amount || 0);
+            const byAmount = (plans || []).find((pl: any) => {
+              const pc = Number(pl.price || 0);
+              return pc === Math.round(amt * 100) || Math.round(pc / 100) === Math.round(amt);
+            });
+            planId = byAmount?.id || null;
+          }
+        }
+        if (!planId) continue;
+        const { data: plan } = await supabase
+          .from("plans")
+          .select("price,monthly_credits,cuts_per_month")
+          .eq("id", planId)
+          .maybeSingle();
+        const credits = Number((plan as any)?.monthly_credits ?? (plan as any)?.cuts_per_month ?? 1) || 1;
+        const priceCents = Number((plan as any)?.price ?? 0);
+        if (priceCents > 0 && credits > 0) {
+          const perVisit = Math.round((((priceCents / 100) / credits) * 100)) / 100;
+          gross += perVisit * usedCount;
+        }
+      }
+      const platform = Math.round(gross * 0.2 * 100) / 100;
+      const salonAmt = gross - platform;
+      setComputedTotals({ gross, platform, salon: salonAmt });
+    };
+    computeFromAffiliates();
+  }, [salon?.id, affiliates, computedTotals.gross]);
 
   const totals = useMemo(() => {
     const monthValidations = computedTotals.gross;

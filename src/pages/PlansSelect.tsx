@@ -18,7 +18,7 @@ const PlansSelect = () => {
       setLoading(true);
       const { data, error } = await supabase
         .from("plans")
-        .select("id,name,price,interval,monthly_credits,active,features,description")
+        .select("id,name,price,interval,monthly_credits,active,description")
         .eq("active", true)
         .order("price", { ascending: true });
       if (error) {
@@ -41,7 +41,16 @@ const PlansSelect = () => {
   }, []);
 
   const checkout = async (planId: string) => {
-    navigate(`/planos/pagar/${planId}`);
+    try {
+      const { data, error } = await supabase.functions.invoke("user-create-checkout", { body: { plan_id: planId } });
+      if (error || !data?.init_point) {
+        navigate(`/planos/pagar/${planId}`);
+        return;
+      }
+      window.location.href = String(data.init_point);
+    } catch (_) {
+      navigate(`/planos/pagar/${planId}`);
+    }
   };
 
   if (loading) {

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, CheckCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 type Row = {
@@ -66,7 +66,11 @@ const FaturasPendentes = () => {
           ]);
           const byId = new Map<string, any>();
           (plansList || []).forEach((pl: any) => byId.set(String(pl.id), pl));
-          const byAmount = (plansList || []).find((pl: any) => Number(pl.price) === Number(p.amount)) || null;
+          const byAmount = (plansList || []).find((pl: any) => {
+            const pc = Number(pl.price || 0);
+            const amt = Number(p.amount || 0);
+            return pc === Math.round(amt * 100) || Math.round(pc / 100) === Math.round(amt);
+          }) || null;
           // Try to find subscription whose plan price matches payment amount
           let chosenSub: any = null;
           if (Array.isArray(subs)) {
@@ -119,54 +123,7 @@ const FaturasPendentes = () => {
 
   // Removido seletor de planos: aprovação usa plano já vinculado ao pagamento/assinatura
 
-  const approve = async (r: Row) => {
-    const planId = r.plan?.id || null;
-    if (!r.subscription_id && !planId) { toast.error("Fatura sem plano vinculado"); return; }
-    setApprovingId(r.id);
-    try {
-      const { error } = await supabase.functions.invoke("approve-user-subscription", {
-        body: r.subscription_id ? { subscription_id: r.subscription_id } : { user_id: r.user_id, plan_id: planId },
-      });
-      if (error) throw error;
-      toast.success("Plano aprovado");
-      setRows((prev) => prev.filter((x) => x.id !== r.id));
-    } catch (e: any) {
-      try {
-        const now = new Date();
-        const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        let subId = r.subscription_id || null;
-        if (!subId) {
-          const { data: created, error: createErr } = await supabase
-            .from("user_subscriptions")
-            .insert({ user_id: r.user_id, plan_id: planId, status: "active", current_period_start: now.toISOString(), current_period_end: end.toISOString() })
-            .select("id")
-            .maybeSingle();
-          if (createErr) throw createErr;
-          subId = created?.id || null;
-        } else {
-          const { error: updErr } = await supabase
-            .from("user_subscriptions")
-            .update({ status: "active", current_period_start: now.toISOString(), current_period_end: end.toISOString() })
-            .eq("id", subId);
-          if (updErr) throw updErr;
-        }
-        const gross = Number(r.amount) || 0;
-        const platform_amount = Math.round(gross * 0.2);
-        const salon_amount = gross - platform_amount;
-        const { error: payErr } = await supabase
-          .from("payments")
-          .update({ status: "approved", platform_amount, salon_amount })
-          .eq("id", r.id);
-        if (payErr) throw payErr;
-        toast.success("Plano aprovado (fallback)");
-        setRows((prev) => prev.filter((x) => x.id !== r.id));
-      } catch (err2: any) {
-        toast.error(err2?.message || e?.message || "Erro ao aprovar");
-      }
-    } finally {
-      setApprovingId(null);
-    }
-  };
+  // Aprovação manual removida: pagamentos comuns não exigem ação do admin
 
   const filtered = rows.filter((r) => {
     if (!query) return true;
@@ -228,14 +185,7 @@ const FaturasPendentes = () => {
                         })()
                       : null}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-2 items-center">
-                    <Button onClick={() => approve(r)} disabled={approvingId === r.id}>
-                      <CheckCircle className="mr-2 h-4 w-4" /> Aprovar
-                    </Button>
-                    <Button variant="outline" className="text-primary border-primary" disabled>
-                      Pendente
-                    </Button>
-                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">Aprovação não necessária. Processamento automático após pagamento.</div>
                 </div>
               ))}
               {!filtered.length && (

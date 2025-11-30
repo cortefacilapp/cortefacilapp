@@ -68,6 +68,44 @@ end $$;
 commit;
 
 begin;
+alter table public.user_affiliations drop constraint if exists user_affiliations_user_unique;
+create unique index if not exists user_affiliations_user_unique on public.user_affiliations(user_id);
+
+create or replace function public.set_user_affiliation(p_user uuid, p_salon uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_current uuid; v_aff_at timestamptz; v_ps timestamptz; v_pe timestamptz;
+begin
+  select salon_id, affiliated_at into v_current, v_aff_at from public.user_affiliations where user_id = p_user;
+  select current_period_start, current_period_end into v_ps, v_pe
+  from public.user_subscriptions
+  where user_id = p_user and status = 'active'
+  order by current_period_end desc limit 1;
+
+  if v_current is not null then
+    if v_ps is not null and v_pe is not null and now() between v_ps and v_pe then
+      if v_current <> p_salon then
+        return jsonb_build_object('ok', false, 'error', 'cannot_change_in_cycle');
+      else
+        return jsonb_build_object('ok', true, 'unchanged', true);
+      end if;
+    end if;
+  end if;
+
+  insert into public.user_affiliations(user_id, salon_id, affiliated_at)
+  values (p_user, p_salon, now())
+  on conflict (user_id) do update set salon_id = excluded.salon_id, affiliated_at = excluded.affiliated_at;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+grant execute on function public.set_user_affiliation(uuid, uuid) to authenticated;
+
+commit;
 
 create or replace function public.list_common_users()
 returns table(id uuid, email text, full_name text, role text)

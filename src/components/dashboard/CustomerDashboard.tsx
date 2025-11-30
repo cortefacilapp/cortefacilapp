@@ -30,13 +30,14 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
       try {
         const { data: pr } = await supabase
           .from("profiles")
-          .select("name")
+          .select("full_name,name")
           .eq("id", user.id)
           .maybeSingle();
-        const name = pr?.name || user.user_metadata?.name || "";
+        const name = pr?.full_name || pr?.name || (user.user_metadata as any)?.full_name || user.user_metadata?.name || "";
         setDisplayName(name || user.email || "");
       } catch (_) {
-        setDisplayName(user.user_metadata?.name || user.email || "");
+        const name = (user.user_metadata as any)?.full_name || user.user_metadata?.name || "";
+        setDisplayName(name || user.email || "");
       }
     };
     loadName();
@@ -208,7 +209,7 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
   const handleSignOut = async () => {
     setLoading(true);
     try {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
       try {
         const pid = (import.meta as any).env.VITE_SUPABASE_PROJECT_ID || "";
         if (pid) localStorage.removeItem(`sb-${pid}-auth-token`);
@@ -218,7 +219,12 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
       toast.success("Logout realizado com sucesso!");
       navigate("/auth");
     } catch (error: any) {
-      toast.error("Erro ao fazer logout");
+      const msg = String(error?.message || "");
+      if (msg.toLowerCase().includes("abort") || msg.toLowerCase().includes("aborted")) {
+        navigate("/auth");
+      } else {
+        toast.error("Erro ao fazer logout");
+      }
     } finally {
       setLoading(false);
     }
@@ -226,6 +232,37 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
 
   const generateCode = async () => {
     try {
+      // Bloqueios: precisa ter assinatura ativa no período e fatura aprovada
+      const { data: uSub } = await supabase
+        .from("user_subscriptions")
+        .select("id,status,current_period_start,current_period_end")
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .order("current_period_end", { ascending: false })
+        .maybeSingle();
+      const now = new Date();
+      if (!uSub || !uSub.current_period_start || !uSub.current_period_end) {
+        toast.error("Assinatura inativa");
+        return;
+      }
+      const ps = new Date(uSub.current_period_start as any);
+      const pe = new Date(uSub.current_period_end as any);
+      if (now < ps || now > pe) {
+        toast.error("Fora do período da assinatura");
+        return;
+      }
+      const { data: pays } = await supabase
+        .from("payments")
+        .select("status,created_at")
+        .eq("user_id", user.id)
+        .eq("status", "approved")
+        .gte("created_at", ps.toISOString())
+        .lte("created_at", pe.toISOString())
+        .limit(1);
+      if (!pays || !pays.length) {
+        toast.error("Fatura pendente ou cancelada");
+        return;
+      }
       if (credits !== null && Number(credits) <= 0) {
         toast.error("Sem créditos disponíveis");
         return;
@@ -323,6 +360,15 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
             )}
           </h1>
           <p className="text-muted-foreground">Gerencie seus cortes e assinatura</p>
+          <div className="mt-2 text-sm">
+            {plan ? (
+              <span className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">
+                Plano ativo: {String((plan as any)?.name || "")} • {(Number((plan as any)?.price || 0) / 100).toFixed(2)}/mês
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">Sem plano ativo</span>
+            )}
+          </div>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
