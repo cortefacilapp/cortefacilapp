@@ -20,7 +20,11 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
   const [usersCount, setUsersCount] = useState<number>(0);
   const [platformRevenue, setPlatformRevenue] = useState<number>(0);
   const [activeOpen, setActiveOpen] = useState(false);
-  const [activeSalons, setActiveSalons] = useState<any[]>([]);
+  type SalonActiveRow = { id: string; name: string; city: string; state: string; address: string; phone?: string | null; approved_at?: string | null };
+  type SalonPendingRow = { id: string; name: string; city: string; state: string; address: string; owner_id: string; created_at: string };
+  type PaymentRow = { platform_amount: number; status: string | null; created_at: string };
+  const [activeSalons, setActiveSalons] = useState<SalonActiveRow[]>([]);
+  const [pendingSalons, setPendingSalons] = useState<SalonPendingRow[]>([]);
 
   useEffect(() => {
     const loadCounts = async () => {
@@ -29,6 +33,12 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
         .select("id", { count: "exact", head: true })
         .eq("status", "pending");
       if (typeof count === "number") setPendingCount(count);
+      const { data: pend } = await supabase
+        .from("salons")
+        .select("id,name,city,state,address,owner_id,created_at")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      setPendingSalons(pend || []);
       const { count: act } = await supabase
         .from("salons")
         .select("id", { count: "exact", head: true })
@@ -37,8 +47,8 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
       const { data: userCountRpc } = await supabase.rpc("count_common_users");
       if (Array.isArray(userCountRpc) && userCountRpc.length === 1 && typeof userCountRpc[0] === "number") {
         setUsersCount(Number(userCountRpc[0]));
-      } else if (typeof (userCountRpc as any) === "number") {
-        setUsersCount(Number(userCountRpc as any));
+      } else if (typeof userCountRpc === "number") {
+        setUsersCount(Number(userCountRpc));
       } else {
         const { count: users } = await supabase
           .from("profiles")
@@ -61,7 +71,7 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
         .eq("status", "approved")
         .gte("created_at", start)
         .lte("created_at", end);
-      const sum = (data || []).reduce((acc: number, p: any) => acc + (Number(p.platform_amount) || 0), 0);
+      const sum = (data || []).reduce((acc: number, p: PaymentRow) => acc + (Number(p.platform_amount) || 0), 0);
       setPlatformRevenue(sum);
     };
     loadPlatformRevenue();
@@ -80,7 +90,7 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           .eq("status", "approved")
           .gte("created_at", start)
           .lte("created_at", end);
-        const sum = (data || []).reduce((acc: number, p: any) => acc + (Number(p.platform_amount) || 0), 0);
+        const sum = (data || []).reduce((acc: number, p: PaymentRow) => acc + (Number(p.platform_amount) || 0), 0);
         setPlatformRevenue(sum);
       })
       .subscribe();
@@ -106,15 +116,13 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
     setLoading(true);
     try {
       await supabase.auth.signOut({ scope: "local" });
-      try {
-        const pid = (import.meta as any).env.VITE_SUPABASE_PROJECT_ID || "";
-        if (pid) localStorage.removeItem(`sb-${pid}-auth-token`);
-        localStorage.removeItem("sb-qowmhahuuuxugtcgdryl-auth-token");
-      } catch (_) {}
+      const pid = String((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_SUPABASE_PROJECT_ID || "");
+      if (pid) localStorage.removeItem(`sb-${pid}-auth-token`);
+      localStorage.removeItem("sb-qowmhahuuuxugtcgdryl-auth-token");
       toast.success("Logout realizado com sucesso!");
       navigate("/auth");
-    } catch (error: any) {
-      const msg = String(error?.message || "");
+    } catch (error: unknown) {
+      const msg = typeof error === "object" && error && "message" in error ? String((error as { message?: unknown }).message) : "";
       if (msg.toLowerCase().includes("abort") || msg.toLowerCase().includes("aborted")) {
         navigate("/auth");
       } else {
@@ -210,9 +218,19 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           <CardDescription>Novos cadastros de salões</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Nenhum salão pendente de aprovação
-          </p>
+          {pendingSalons.length ? (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {pendingSalons.map((s) => (
+                <div key={s.id} className="rounded border p-3">
+                  <div className="font-medium">{String(s.name || "Salão")}</div>
+                  <div className="text-sm text-muted-foreground">{String(s.city || "")}/{String(s.state || "")}</div>
+                  <Button variant="outline" className="mt-3 w-full" onClick={() => navigate("/admin/pendentes")}>Ver detalhes</Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Nenhum salão pendente de aprovação</p>
+          )}
         </CardContent>
       </Card>
 

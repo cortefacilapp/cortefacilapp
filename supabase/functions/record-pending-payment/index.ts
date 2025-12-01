@@ -2,7 +2,13 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export default Deno.serve(async (req: Request) => {
-  if (req.method !== "POST") return new Response(null, { status: 405 });
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  };
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return new Response(null, { status: 405, headers: corsHeaders });
   const url = Deno.env.get("SUPABASE_URL") || "";
   const key =
     Deno.env.get("SERVICE_ROLE_KEY") ||
@@ -34,7 +40,7 @@ export default Deno.serve(async (req: Request) => {
   }
 
   if (!uid) {
-    return new Response(JSON.stringify({ error: "missing_params" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: "missing_params" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } });
   }
 
   // If plan_id provided, ensure a pending subscription exists for this user/plan
@@ -52,7 +58,7 @@ export default Deno.serve(async (req: Request) => {
       if (subErr) {
         return new Response(JSON.stringify({ error: subErr.message }), {
           status: 400,
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...corsHeaders },
         });
       }
     }
@@ -62,7 +68,8 @@ export default Deno.serve(async (req: Request) => {
   let gross = amount;
   if (!gross && plan_id) {
     const { data: plan } = await client.from("plans").select("price").eq("id", plan_id).maybeSingle();
-    gross = Number((plan as any)?.price ?? 0) / 100;
+    const pl: { price: number } | null = (plan as unknown) as { price: number } | null;
+    gross = Number(pl?.price ?? 0) / 100;
   }
   const platform_amount = Math.round(gross * 0.2 * 100) / 100;
   const salon_amount = Math.max(0, gross - platform_amount);
@@ -90,8 +97,8 @@ export default Deno.serve(async (req: Request) => {
       .insert({ user_id: uid, amount: gross, currency, status: "approved", provider, provider_payment_id, platform_amount, salon_amount })
       .select("id")
       .maybeSingle();
-    if (payErr) return new Response(JSON.stringify({ error: payErr.message }), { status: 400, headers: { "Content-Type": "application/json" } });
-    return new Response(JSON.stringify({ id: payApproved?.id, approved: true }), { headers: { "Content-Type": "application/json" } });
+    if (payErr) return new Response(JSON.stringify({ error: payErr.message }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } });
+    return new Response(JSON.stringify({ id: payApproved?.id, approved: true }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
   }
 
   // Outros provedores: registrar pendente
@@ -100,6 +107,6 @@ export default Deno.serve(async (req: Request) => {
     .insert({ user_id: uid, amount: Math.round(gross * 100), currency, status: "pending", provider, provider_payment_id })
     .select("id")
     .maybeSingle();
-  if (error) return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { "Content-Type": "application/json" } });
-  return new Response(JSON.stringify({ id: data?.id, approved: false }), { headers: { "Content-Type": "application/json" } });
+  if (error) return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } });
+  return new Response(JSON.stringify({ id: data?.id, approved: false }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
 });

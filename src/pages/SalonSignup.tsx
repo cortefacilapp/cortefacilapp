@@ -73,18 +73,11 @@ const SalonSignup = () => {
 
       const { error } = await supabase.from("salons").insert({
         owner_id: ownerId,
-        name: tradeName,
-        doc,
+        name: tradeName || ownerName || "Salão",
         status: "pending",
-        owner_full_name: ownerName,
-        trade_name: tradeName,
-        opening_hours: openingHours,
-        days_open: daysOpen,
         state,
         city,
-        cep,
-        street,
-        number,
+        postal_code: cep || null,
         address: `${street}, ${number} - ${city}/${state} - CEP ${cep}`,
       });
 

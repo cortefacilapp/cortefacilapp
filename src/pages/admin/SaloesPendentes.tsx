@@ -8,13 +8,17 @@ import { toast } from "sonner";
 
 const SaloesPendentes = () => {
   const [loading, setLoading] = useState(true);
-  const [salons, setSalons] = useState<any[]>([]);
-  const [selected, setSelected] = useState<any | null>(null);
+  type SalonPendingRow = { id: string; name: string; city: string; state: string; address: string; owner_id: string; created_at: string; postal_code?: string | null; description?: string | null };
+  const [salons, setSalons] = useState<SalonPendingRow[]>([]);
+  const [selected, setSelected] = useState<SalonPendingRow | null>(null);
   const [reason, setReason] = useState("");
 
   const load = async () => {
     setLoading(true);
-    const res = await supabase.from("salons").select("id, name, city, state, address, owner_id, created_at, doc, description").eq("status", "pending");
+    const res = await supabase
+      .from("salons")
+      .select("id, name, city, state, address, owner_id, created_at, postal_code, description")
+      .eq("status", "pending");
     if (!res.error && res.data) setSalons(res.data);
     setLoading(false);
   };
@@ -42,7 +46,7 @@ const SaloesPendentes = () => {
     const { data: userData } = await supabase.auth.getUser();
     const { error } = await supabase
       .from("salons")
-      .update({ status: "rejected", rejected_at: new Date().toISOString(), rejected_by: userData?.user?.id || null, rejection_reason: reason || null })
+      .update({ status: "rejected" })
       .eq("id", id);
     if (error) {
       toast.error("Erro ao reprovar");
@@ -90,7 +94,6 @@ const SaloesPendentes = () => {
             <div className="space-y-2">
               <div>{selected.address}</div>
               <div>{selected.city}/{selected.state}</div>
-              <div>Documento: {selected.doc || "--"}</div>
               <div>Cadastrado em: {new Date(selected.created_at).toLocaleString()}</div>
               <div>{selected.description || ""}</div>
               <div className="space-y-1 pt-2">

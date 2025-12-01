@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,11 +13,12 @@ const PlanosAdmin = () => {
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [selected, setSelected] = useState<Plan | null>(null);
+  const [editPrice, setEditPrice] = useState<string>("");
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState<string>("Social");
   const [newPrice, setNewPrice] = useState<string>("59,99");
   const [newCredits, setNewCredits] = useState<number>(2);
-  const allowed = new Set(["Social", "Popular", "Premium"]);
+  const allowed = useMemo(() => new Set(["Social", "Popular", "Premium"]), []);
 
   useEffect(() => {
     const load = async () => {
@@ -29,13 +30,43 @@ const PlanosAdmin = () => {
       if (error) {
         toast.error("Erro ao carregar planos");
       } else {
-        const list = (data || []).filter((p: any) => allowed.has(p.name));
-        setPlans(list as any);
+        const fetched = (data || []) as Plan[];
+        const list = fetched.filter((p) => allowed.has(p.name));
+        setPlans(list);
       }
       setLoading(false);
     };
     load();
-  }, []);
+  }, [allowed]);
+
+  const formatBRLFromCents = (cents: number) => {
+    try {
+      return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((Number(cents) || 0) / 100);
+    } catch {
+      const v = (Number(cents) || 0) / 100;
+      return `R$ ${v.toFixed(2).replace('.', ',')}`;
+    }
+  };
+
+  const parseBRLToCents = (value: string) => {
+    const normalized = String(value)
+      .replace(/\s+/g, "")
+      .replace(/R\$/g, "")
+      .replace(/\./g, "")
+      .replace(/,/g, ".");
+    const num = Number(normalized || "0");
+    return Math.round(num * 100);
+  };
+
+  // Atualiza string formatada quando abrimos o modal
+  useEffect(() => {
+    if (selected) {
+      const priceNum = Number(selected.price || 0);
+      setEditPrice(priceNum > 0 ? formatBRLFromCents(priceNum) : "");
+    } else {
+      setEditPrice("");
+    }
+  }, [selected]);
 
   const savePlan = async (p: Plan) => {
     setLoading(true);
@@ -51,9 +82,11 @@ const PlanosAdmin = () => {
         .from("plans")
         .select("id,name,price,monthly_credits,interval,active")
         .order("price", { ascending: true });
-      setPlans((data || []).filter((x: any) => allowed.has(x.name)) as any);
-    } catch (e: any) {
-      toast.error(e?.message || "Falha ao salvar");
+      const fetched = (data || []) as Plan[];
+      setPlans(fetched.filter((x) => allowed.has(x.name)));
+    } catch (e: unknown) {
+      const msg = typeof e === "object" && e && "message" in e ? String((e as { message?: unknown }).message) : "Falha ao salvar";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -109,9 +142,17 @@ const PlanosAdmin = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="text-sm text-muted-foreground">Preço (R$)</div>
-                  <Input value={(Number(selected.price) / 100).toFixed(2)} onChange={(e) => {
-                    const val = Number(e.target.value.replace(",", "."));
-                    setSelected({ ...selected, price: Math.round(val * 100) });
+                  <Input value={editPrice} onChange={(e) => {
+                    const raw = e.target.value;
+                    const digits = raw.replace(/\D/g, "");
+                    if (!digits) {
+                      setEditPrice("");
+                      setSelected({ ...selected, price: 0 });
+                      return;
+                    }
+                    const cents = Number.parseInt(digits, 10);
+                    setSelected({ ...selected, price: cents });
+                    setEditPrice(formatBRLFromCents(cents));
                   }} />
                 </div>
                 <div>
@@ -168,9 +209,11 @@ const PlanosAdmin = () => {
                     .from('plans')
                     .select('id,name,price,monthly_credits,interval,active')
                     .order('price', { ascending: true });
-                  setPlans((data || []).filter((x: any) => allowed.has(x.name)) as any);
-                } catch (e: any) {
-                  toast.error(e?.message || 'Falha ao criar');
+                  const fetched = (data || []) as Plan[];
+                  setPlans(fetched.filter((x) => allowed.has(x.name)));
+                } catch (e: unknown) {
+                  const msg = typeof e === "object" && e && "message" in e ? String((e as { message?: unknown }).message) : 'Falha ao criar';
+                  toast.error(msg);
                 }
               }}>Salvar</Button>
             </div>

@@ -39,6 +39,26 @@ const FaturasPendentes = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [query, setQuery] = useState("");
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const approve = async (r: Row) => {
+    if (approvingId) return;
+    setApprovingId(r.id);
+    try {
+      const body: Record<string, unknown> = { user_id: r.user_id };
+      if (r.subscription_id) body.subscription_id = r.subscription_id;
+      if (r.plan_id) body.plan_id = r.plan_id;
+      const { error } = await supabase.functions.invoke("approve-user-subscription", { body });
+      if (error) {
+        toast.error(error.message || "Erro ao aprovar");
+        return;
+      }
+      toast.success("Fatura aprovada");
+      setRows((prev) => prev.filter((x) => x.id !== r.id));
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao aprovar");
+    } finally {
+      setApprovingId(null);
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -186,6 +206,7 @@ const FaturasPendentes = () => {
                       : null}
                   </div>
                   <div className="mt-2 text-xs text-muted-foreground">Aprovação não necessária. Processamento automático após pagamento.</div>
+                  <Button className="mt-2 w-full" onClick={() => approve(r)} disabled={approvingId === r.id}>Aprovar manualmente</Button>
                 </div>
               ))}
               {!filtered.length && (

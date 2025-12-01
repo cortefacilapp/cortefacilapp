@@ -6,10 +6,13 @@ import { Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
+type PaymentRow = { id: string; amount: number; currency: string; status: string; created_at: string; provider: string | null; provider_payment_id: string | null };
+type SubscriptionRow = { id: string; plan_id: string | null; status: string; current_period_end: string | null };
+
 const Invoices = () => {
   const [loading, setLoading] = useState(true);
-  const [payments, setPayments] = useState<any[]>([]);
-  const [subscription, setSubscription] = useState<any | null>(null);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [subscription, setSubscription] = useState<SubscriptionRow | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -24,13 +27,14 @@ const Invoices = () => {
         .eq("user_id", uid)
         .order("updated_at", { ascending: false })
         .maybeSingle();
-      setSubscription(sub || null);
+      setSubscription((sub as SubscriptionRow | null) || null);
       const { data: pays } = await supabase
         .from("payments")
         .select("id, amount, currency, status, created_at, provider, provider_payment_id")
         .eq("user_id", uid)
-        .order("created_at", { ascending: false });
-      setPayments(pays || []);
+        .order("created_at", { ascending: false })
+        .limit(3);
+      setPayments(((pays || []) as PaymentRow[]));
       setLoading(false);
     };
     load();
@@ -44,8 +48,23 @@ const Invoices = () => {
       const init = data?.init_point;
       if (!init) throw new Error("Falha ao iniciar checkout");
       window.location.href = init;
-    } catch (err: any) {
-      toast.error(err.message || "Erro ao iniciar pagamento");
+    } catch (err: unknown) {
+      const msg = typeof err === "object" && err && "message" in err ? String((err as { message?: unknown }).message) : "Erro ao iniciar pagamento";
+      toast.error(msg);
+    }
+  };
+
+  const sendWhatsapp = (p: PaymentRow) => {
+    try {
+      const amount = Number(p.amount) / 100;
+      const id = p.provider_payment_id || "";
+      const label = p.provider?.toLowerCase() === "pix" ? "Chave PIX" : "ID";
+      const text = encodeURIComponent(
+        `Olá! Envio comprovante do pagamento no valor R$ ${amount.toFixed(2)}. ${label}: ${id}`
+      );
+      window.location.href = `https://wa.me/5561982152648?text=${text}`;
+    } catch (e) {
+      toast.error("Erro ao abrir WhatsApp");
     }
   };
 
@@ -93,7 +112,8 @@ const Invoices = () => {
                   <div className="font-medium">{p.provider?.toUpperCase()} • {p.provider_payment_id || "--"}</div>
                   <div>Valor: R$ {(Number(p.amount) / 100).toFixed(2)} {p.currency}</div>
                   <div>Status: {p.status}</div>
-                  <div>Data: {new Date(p.created_at).toLocaleString()}</div>
+                  <div>Data: {new Date(p.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</div>
+                  <Button className="mt-2 w-full" onClick={() => sendWhatsapp(p)}>Enviar comprovante via WhatsApp</Button>
                 </div>
               ))}
               {!payments.length && (

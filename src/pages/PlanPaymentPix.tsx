@@ -14,9 +14,10 @@ const PlanPaymentPix = () => {
   const [plan, setPlan] = useState<any | null>(null);
   const [pixCode, setPixCode] = useState<string>("");
   const [step, setStep] = useState<number>(1);
-  const [secondsLeft, setSecondsLeft] = useState<number>(120);
+  const [secondsLeft, setSecondsLeft] = useState<number>(60);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [err, setErr] = useState<string>("");
+  const [paymentKey, setPaymentKey] = useState<string>("");
 
   useEffect(() => {
     const load = async () => {
@@ -56,6 +57,7 @@ const PlanPaymentPix = () => {
           description: `Assinatura ${p.name}`,
         });
         setPixCode(code);
+        setPaymentKey(key);
         setStep(2);
         const { error: recErr } = await supabase.functions.invoke("record-pending-payment", {
           body: { amount, currency: "BRL", provider: "pix", provider_payment_id: key, plan_id: p.id },
@@ -96,7 +98,7 @@ const PlanPaymentPix = () => {
 
   useEffect(() => {
     if (!pixCode) return;
-    setSecondsLeft(120);
+    setSecondsLeft(60);
     const id = setInterval(() => {
       setSecondsLeft((s) => {
         if (s <= 1) {
@@ -110,6 +112,72 @@ const PlanPaymentPix = () => {
     }, 1000);
     return () => clearInterval(id);
   }, [pixCode]);
+
+  useEffect(() => {
+    if (!paymentKey || !plan?.id) return;
+    let stop = false;
+    const subRealtime = async () => {
+      const ch = supabase
+        .channel(`payment-status-${paymentKey}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "payments", filter: `provider_payment_id=eq.${paymentKey}` },
+          async (payload) => {
+            const next = (payload.new as { status?: string | null; user_id?: string | null }) || {};
+            if (next.status === "approved") {
+              const { data: userData } = await supabase.auth.getUser();
+              const uid = userData?.user?.id;
+              if (uid) {
+                await supabase
+                  .from("user_subscriptions")
+                  .update({ status: "active" })
+                  .eq("user_id", uid)
+                  .eq("plan_id", plan.id);
+              }
+              setStep(3);
+              setModalOpen(true);
+              stop = true;
+              try { supabase.removeChannel(ch); } catch (_) {}
+            }
+          },
+        )
+        .subscribe();
+      return ch;
+    };
+    const startPolling = () => {
+      let tries = 0;
+      const pollId = setInterval(async () => {
+        if (stop) { clearInterval(pollId); return; }
+        tries += 1;
+        const { data } = await supabase
+          .from("payments")
+          .select("status,user_id")
+          .eq("provider_payment_id", paymentKey)
+          .maybeSingle();
+        if (data?.status === "approved") {
+          const { data: userData } = await supabase.auth.getUser();
+          const uid = userData?.user?.id;
+          if (uid) {
+            await supabase
+              .from("user_subscriptions")
+              .update({ status: "active" })
+              .eq("user_id", uid)
+              .eq("plan_id", plan.id);
+          }
+          setStep(3);
+          setModalOpen(true);
+          stop = true;
+          clearInterval(pollId);
+        }
+        if (tries > 60) {
+          clearInterval(pollId);
+        }
+      }, 5000);
+    };
+    subRealtime();
+    startPolling();
+    return () => { stop = true; };
+  }, [paymentKey, plan?.id]);
 
   const payViaCheckout = async () => {
     try {
