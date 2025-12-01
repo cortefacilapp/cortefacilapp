@@ -39,12 +39,13 @@ const Dashboard = () => {
       if (!user) return;
       setLoading(true);
       try {
+        type RoleRow = { role: string };
         const { data: rolesData } = await supabase
           .from("user_roles")
           .select("role")
           .eq("user_id", user.id);
 
-        const roles = (rolesData || []).map((r: any) => String(r.role));
+        const roles = (rolesData || []).map((r: RoleRow) => String(r.role));
 
         if (roles.includes("admin")) {
           setUserRole("admin");
@@ -52,12 +53,13 @@ const Dashboard = () => {
           setUserRole("owner");
         } else {
           // fallback to profiles.role in case roles table not populated yet
+          type ProfileRoleRow = { role?: string | null };
           const { data: prof } = await supabase
             .from("profiles")
             .select("role")
             .eq("id", user.id)
             .maybeSingle();
-          const profRole = String((prof as any)?.role || "customer");
+          const profRole = String((prof as ProfileRoleRow | null)?.role || "customer");
           if (profRole === "admin") {
             setUserRole("admin");
           } else if (profRole === "owner" || profRole === "salon_owner") {
@@ -76,14 +78,7 @@ const Dashboard = () => {
     detectRole();
   }, [user]);
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
+  // Navigation side effect must be declared before any conditional returns
   useEffect(() => {
     if (!loading) {
       if (userRole === "admin") {
@@ -93,6 +88,14 @@ const Dashboard = () => {
       }
     }
   }, [loading, userRole, navigate]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (userRole === "admin" || userRole === "owner") {
     return (

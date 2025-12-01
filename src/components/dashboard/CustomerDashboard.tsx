@@ -17,7 +17,8 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [displayName, setDisplayName] = useState<string>(user.user_metadata?.name || "");
-  const [plan, setPlan] = useState<any | null>(null);
+  type PlanRow = { name: string; price: number; interval?: string | null; monthly_credits?: number | null; cuts_per_month?: number | null };
+  const [plan, setPlan] = useState<(PlanRow & { status?: string | null }) | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
   const [codeModalOpen, setCodeModalOpen] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
@@ -33,10 +34,12 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
           .select("full_name,name")
           .eq("id", user.id)
           .maybeSingle();
-        const name = pr?.full_name || pr?.name || (user.user_metadata as any)?.full_name || user.user_metadata?.name || "";
+        const meta = user.user_metadata as { full_name?: string; name?: string } | undefined;
+        const name = pr?.full_name || pr?.name || meta?.full_name || meta?.name || "";
         setDisplayName(name || user.email || "");
       } catch (_) {
-        const name = (user.user_metadata as any)?.full_name || user.user_metadata?.name || "";
+        const meta = user.user_metadata as { full_name?: string; name?: string } | undefined;
+        const name = meta?.full_name || meta?.name || "";
         setDisplayName(name || user.email || "");
       }
     };
@@ -100,21 +103,24 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
         .eq("status", "active")
         .order("current_period_end", { ascending: false })
         .maybeSingle();
-      if (sub?.plan_id) {
+      type SubRow = { plan_id?: string | null; status?: string | null; current_period_start?: string | null; current_period_end?: string | null };
+      const subRow = sub as SubRow | null;
+      if (subRow?.plan_id) {
           const { data: p } = await supabase
             .from("plans")
             .select("name,price,interval,monthly_credits,cuts_per_month")
-            .eq("id", sub.plan_id)
+            .eq("id", subRow.plan_id)
             .maybeSingle();
           if (p) {
-            setPlan({ ...p, status: sub.status });
-            const totalCredits = (p as any).monthly_credits ?? (p as any).cuts_per_month ?? null;
+            const pr = p as PlanRow;
+            setPlan({ ...pr, status: subRow.status });
+            const totalCredits = pr.monthly_credits ?? pr.cuts_per_month ?? null;
             const { data: uc } = await supabase
               .from("user_credits")
               .select("remaining")
               .eq("user_id", user.id)
-              .eq("plan_id", sub.plan_id)
-              .eq("period_start", sub.current_period_start)
+              .eq("plan_id", subRow.plan_id)
+              .eq("period_start", subRow.current_period_start)
               .maybeSingle();
             if (uc?.remaining !== undefined && uc?.remaining !== null) {
               setCredits(Number(uc.remaining));
@@ -123,8 +129,8 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
                 .from("codes")
                 .select("id", { count: "exact" })
                 .eq("user_id", user.id)
-                .gte("used_at", sub.current_period_start as any)
-                .lte("used_at", sub.current_period_end as any)
+                .gte("used_at", subRow.current_period_start as any)
+                .lte("used_at", subRow.current_period_end as any)
                 .or("status.eq.used,used.eq.true");
               const usedCount = Number(count ?? 0);
               setCredits(Math.max(0, Number(totalCredits) - usedCount));
@@ -137,8 +143,8 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
               schema: "public",
               table: "user_credits",
             }, (payload) => {
-              const row = (payload.new as any) || {};
-              if (row.user_id === user.id && row.plan_id === sub.plan_id && row.period_start === sub.current_period_start) {
+              const row = (payload.new as { user_id?: string; plan_id?: string; period_start?: string; remaining?: number | null }) || {};
+              if (row.user_id === user.id && row.plan_id === subRow?.plan_id && row.period_start === subRow?.current_period_start) {
                 const newRemaining = row.remaining;
                 if (newRemaining !== undefined && newRemaining !== null) setCredits(Number(newRemaining));
               }
@@ -148,21 +154,21 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
               schema: "public",
               table: "codes",
             }, async (payload) => {
-              const row = (payload.new as any) || {};
+              const row = (payload.new as { user_id?: string; status?: string | null; used?: boolean | null }) || {};
               if (row.user_id === user.id && (row.status === "used" || row.used === true)) {
                 const { data: p2 } = await supabase
                   .from("plans")
                   .select("monthly_credits,cuts_per_month")
-                  .eq("id", sub.plan_id)
+                  .eq("id", subRow?.plan_id as string)
                   .maybeSingle();
-                const totalCredits = (p2 as any)?.monthly_credits ?? (p2 as any)?.cuts_per_month ?? null;
+                const totalCredits = (p2 as { monthly_credits?: number | null; cuts_per_month?: number | null } | null)?.monthly_credits ?? (p2 as { monthly_credits?: number | null; cuts_per_month?: number | null } | null)?.cuts_per_month ?? null;
                 if (totalCredits !== null) {
                   const { count } = await supabase
                     .from("codes")
                     .select("id", { count: "exact" })
                     .eq("user_id", user.id)
-                    .gte("used_at", sub.current_period_start as any)
-                    .lte("used_at", sub.current_period_end as any)
+                    .gte("used_at", subRow?.current_period_start as any)
+                    .lte("used_at", subRow?.current_period_end as any)
                     .or("status.eq.used,used.eq.true");
                   const usedCount = Number(count ?? 0);
                   setCredits(Math.max(0, Number(totalCredits) - usedCount));
@@ -211,7 +217,8 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
     try {
       await supabase.auth.signOut({ scope: "local" });
       try {
-        const pid = (import.meta as any).env.VITE_SUPABASE_PROJECT_ID || "";
+        const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+        const pid = String(env.VITE_SUPABASE_PROJECT_ID || "");
         if (pid) localStorage.removeItem(`sb-${pid}-auth-token`);
         // também remove possível token antigo
         localStorage.removeItem("sb-qowmhahuuuxugtcgdryl-auth-token");
@@ -267,7 +274,8 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
         toast.error("Sem créditos disponíveis");
         return;
       }
-      const useEdge = String((import.meta as any).env.VITE_USE_EDGE_FUNCTIONS || "false").toLowerCase() === "true";
+      const env2 = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+      const useEdge = String(env2.VITE_USE_EDGE_FUNCTIONS || "false").toLowerCase() === "true";
       if (useEdge) {
         const { data, error } = await supabase.functions
           .invoke("generate-code", { body: {} })
@@ -363,7 +371,7 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
           <div className="mt-2 text-sm">
             {plan ? (
               <span className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">
-                Plano ativo: {String((plan as any)?.name || "")} • {(Number((plan as any)?.price || 0) / 100).toFixed(2)}/mês
+                Plano ativo: {String(plan?.name || "")} • {(Number(plan?.price || 0) / 100).toFixed(2)}/mês
               </span>
             ) : (
               <span className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">Sem plano ativo</span>

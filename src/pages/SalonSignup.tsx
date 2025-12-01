@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -21,6 +22,7 @@ const DAYS = [
 const SalonSignup = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [successOpen, setSuccessOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -87,16 +89,11 @@ const SalonSignup = () => {
       });
 
       if (error) throw error;
-      toast.success("Cadastro enviado! A liberação de acesso ocorre após aprovação (até 24h).");
-      await supabase.auth.signOut();
-      try {
-        const pid = (import.meta as any).env.VITE_SUPABASE_PROJECT_ID || "";
-        if (pid) localStorage.removeItem(`sb-${pid}-auth-token`);
-        localStorage.removeItem("sb-qowmhahuuuxugtcgdryl-auth-token");
-      } catch (_) {}
-      navigate("/auth");
-    } catch (err: any) {
-      toast.error(err.message || "Erro ao cadastrar salão");
+      toast.success("Cadastro enviado!");
+      setSuccessOpen(true);
+    } catch (err: unknown) {
+      const msg = typeof err === "object" && err && "message" in err ? String((err as { message?: unknown }).message) : "Erro ao cadastrar salão";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -185,6 +182,34 @@ const SalonSignup = () => {
               {loading ? "Enviando..." : "Enviar para aprovação"}
             </Button>
           </form>
+          <Dialog open={successOpen} onOpenChange={(open) => {
+            setSuccessOpen(open);
+            if (!open) {
+              (async () => {
+                try {
+                  await supabase.auth.signOut();
+                  const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+                  const pid = String(env.VITE_SUPABASE_PROJECT_ID || "");
+                  if (pid) localStorage.removeItem(`sb-${pid}-auth-token`);
+                  localStorage.removeItem("sb-qowmhahuuuxugtcgdryl-auth-token");
+                } finally {
+                  navigate("/auth");
+                }
+              })();
+            }
+          }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Salão criado com sucesso</DialogTitle>
+                <DialogDescription>
+                  Seu cadastro foi enviado. Aguarde até 24 horas para revisão e aprovação do salão.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-2">
+                <Button className="w-full" onClick={() => setSuccessOpen(false)}>Entendi</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
     </div>

@@ -5,44 +5,49 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 
+type UserCommon = { id: string; full_name?: string | null; name?: string | null; email: string; role?: string };
+type PlanInfo = { name: string; price: number; credits: number };
+type Affiliation = { id: string; name: string };
+
 const UsuariosAtivos = () => {
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<any[]>([]);
-  const [selected, setSelected] = useState<any | null>(null);
-  const [planInfo, setPlanInfo] = useState<any | null>(null);
-  const [affiliation, setAffiliation] = useState<any | null>(null);
+  const [users, setUsers] = useState<UserCommon[]>([]);
+  const [selected, setSelected] = useState<UserCommon | null>(null);
+  const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null);
+  const [affiliation, setAffiliation] = useState<Affiliation | null>(null);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       const { data: common } = await supabase.rpc("list_common_users");
-      let list = (common as any[]) || [];
+      let list: UserCommon[] = Array.isArray(common) ? (common as unknown as UserCommon[]) : [];
       if (!Array.isArray(list) || !list.length) {
         const res = await supabase
           .from("profiles")
           .select("id, name, full_name, email, role")
           .in("role", ["user", "customer"])
           .order("name", { ascending: true });
-        list = res.error ? [] : (res.data || []);
+        list = res.error ? [] : ((res.data || []) as UserCommon[]);
         if (list.length) {
           const ids = list.map((u: any) => u.id).filter(Boolean);
           const { data: contacts } = await supabase.rpc("user_contacts_for_users", { p_ids: ids });
+          type Contact = { user_id: string; full_name?: string | null; email?: string | null };
           const nameMap = new Map<string, string>();
           const emailMap = new Map<string, string>();
-          (contacts || []).forEach((n: any) => {
+          (Array.isArray(contacts) ? (contacts as unknown as Contact[]) : []).forEach((n) => {
             if (n && n.user_id) {
               nameMap.set(String(n.user_id), String(n.full_name || ""));
               emailMap.set(String(n.user_id), String(n.email || ""));
             }
           });
-          list = list.map((u: any) => ({
+          list = list.map((u: UserCommon) => ({
             ...u,
             full_name: nameMap.get(u.id) || u.full_name || u.name || null,
             email: emailMap.get(u.id) || u.email,
           }));
         }
       }
-      list.sort((a: any, b: any) => String(a.full_name || a.name || a.email).localeCompare(String(b.full_name || b.name || b.email)));
+      list.sort((a: UserCommon, b: UserCommon) => String(a.full_name || a.name || a.email).localeCompare(String(b.full_name || b.name || b.email)));
       setUsers(list);
       setLoading(false);
     };
@@ -60,13 +65,17 @@ const UsuariosAtivos = () => {
         .eq("status", "active")
         .order("current_period_end", { ascending: false })
         .maybeSingle();
-      if (sub?.plan_id) {
+      type SubRow = { plan_id?: string | null; status?: string | null; current_period_start?: string | null; current_period_end?: string | null };
+      const subRow = sub as SubRow | null;
+      if (subRow?.plan_id) {
         const { data: p } = await supabase
           .from("plans")
           .select("name,price,monthly_credits,cuts_per_month")
-          .eq("id", sub.plan_id)
+          .eq("id", subRow.plan_id)
           .maybeSingle();
-        setPlanInfo({ name: (p as any)?.name, price: (p as any)?.price, credits: (p as any)?.monthly_credits ?? (p as any)?.cuts_per_month ?? 0 });
+        type PlanRow = { name: string; price: number; monthly_credits?: number | null; cuts_per_month?: number | null };
+        const pr = p as PlanRow | null;
+        setPlanInfo(pr ? { name: pr.name, price: pr.price, credits: (pr.monthly_credits ?? pr.cuts_per_month ?? 0) as number } : null);
       } else {
         setPlanInfo(null);
       }
@@ -76,13 +85,17 @@ const UsuariosAtivos = () => {
         .select("salon_id")
         .eq("user_id", selected.id)
         .maybeSingle();
-      if (aff?.salon_id) {
+      type AffRow = { salon_id?: string | null };
+      const affRow = aff as AffRow | null;
+      if (affRow?.salon_id) {
         const { data: salon } = await supabase
           .from("salons")
           .select("name")
-          .eq("id", aff.salon_id)
+          .eq("id", affRow.salon_id)
           .maybeSingle();
-        setAffiliation({ id: aff.salon_id, name: (salon as any)?.name || "Salão" });
+        type SalonRow = { name?: string | null };
+        const sr = salon as SalonRow | null;
+        setAffiliation({ id: String(affRow.salon_id), name: String(sr?.name || "Salão") });
       } else {
         setAffiliation(null);
       }
