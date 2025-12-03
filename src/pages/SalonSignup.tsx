@@ -108,7 +108,6 @@ const SalonSignup = () => {
         }
       }
 
-      if (error) throw error;
       toast.success("Cadastro enviado!");
       setSuccessOpen(true);
     } catch (err: unknown) {
