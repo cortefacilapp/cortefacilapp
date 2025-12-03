@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2 } from "lucide-react";
+import { Loader2, Wallet, CalendarDays } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 const OwnerDashboardPage = () => {
   const [loading, setLoading] = useState(true);
@@ -10,6 +13,30 @@ const OwnerDashboardPage = () => {
   const [payouts, setPayouts] = useState<any[]>([]);
   const [affiliates, setAffiliates] = useState<any[]>([]);
   const [computedTotals, setComputedTotals] = useState<{ gross: number; platform: number; salon: number }>({ gross: 0, platform: 0, salon: 0 });
+  const [validationsCount, setValidationsCount] = useState<number>(0);
+  const [pixKey, setPixKey] = useState("");
+  const [requesting, setRequesting] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState<string>("");
+  const [availableWithdraw, setAvailableWithdraw] = useState<number>(0);
+  const brToNumber = (s: string) => {
+    const t = String(s || "").replace(/\./g, "").replace(/,/g, ".");
+    return Number(t);
+  };
+  const formatDateBR = (d: Date | null) => (d ? new Intl.DateTimeFormat("pt-BR").format(d) : "");
+  const formatBRLInput = (s: string) => {
+    const digits = String(s || "").replace(/\D/g, "");
+    const len = digits.length;
+    if (!len) return "";
+    let intPart = digits.slice(0, Math.max(len - 2, 0));
+    const decPart = digits.slice(Math.max(len - 2, 0));
+    // remove zeros à esquerda mantendo pelo menos um zero quando vazio
+    intPart = (intPart || "").replace(/^0+(?!$)/, "");
+    if (!intPart) intPart = "0";
+    // agrupar milhares da direita para a esquerda
+    const intFmt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return `${intFmt},${decPart.padStart(2, "0")}`;
+  };
+  const withdrawAmtNum = useMemo(() => brToNumber(withdrawAmount), [withdrawAmount]);
 
   const displayNameFor = (u: any) => {
     const s = (u && u.full_name) || "";
@@ -138,12 +165,37 @@ const OwnerDashboardPage = () => {
           }
         }
 
+        // Contagem de validações (visit_logs) no ciclo
+        {
+          const { count: vcount } = await supabase
+            .from("visit_logs")
+            .select("id", { count: "exact" })
+            .eq("salon_id", s.id)
+            .gte("created_at", start.toISOString())
+            .lte("created_at", end.toISOString());
+          setValidationsCount(Number(vcount || 0));
+        }
+
         const { data: p } = await supabase
           .from("payouts")
           .select("amount, status, paid_at")
           .eq("salon_id", s.id)
           .order("paid_at", { ascending: false });
         setPayouts(p || []);
+        {
+          const now2 = new Date();
+          const cs = new Date(now2.getFullYear(), now2.getMonth(), 1);
+          const ce = new Date(now2.getFullYear(), now2.getMonth() + 1, 0, 23, 59, 59);
+          const avail = (p || [])
+            .filter((it: any) => {
+              const st = String(it.status || "").toLowerCase();
+              const ps = it.period_start ? new Date(it.period_start) : null;
+              const pe = it.period_end ? new Date(it.period_end) : null;
+              return st === "pending" && ps && pe && ps >= cs && pe <= ce;
+            })
+            .reduce((acc: number, it: any) => acc + Number(it.amount || 0), 0);
+          setAvailableWithdraw(avail);
+        }
 
         const { data: userData } = await supabase.auth.getUser();
         const ownerId = userData?.user?.id || null;
@@ -173,26 +225,75 @@ const OwnerDashboardPage = () => {
                 emailById.set(String(n.user_id), String(n.email || ""));
               }
             });
-            const detailed = [] as any[];
-            for (const r of base) {
-              const uid = r.user_id;
-              const { count } = await supabase
-                .from("codes")
-                .select("id", { count: "exact" })
+          const detailed = [] as any[];
+          for (const r of base) {
+            const uid = r.user_id;
+            const { count } = await supabase
+              .from("codes")
+              .select("id", { count: "exact" })
+              .eq("user_id", uid)
+              .eq("used_by_salon_id", s.id)
+              .gte("used_at", startCycle.toISOString())
+              .lte("used_at", endCycle.toISOString())
+              .or("status.eq.used,used.eq.true");
+            let planName = "";
+            let planId: string | null = null;
+            const { data: subs } = await supabase
+              .from("user_subscriptions")
+              .select("plan_id,status,current_period_start,current_period_end")
+              .eq("user_id", uid)
+              .order("current_period_end", { ascending: false })
+              .limit(3);
+            const nowD = new Date();
+            const pick = (subs || []).find((r: any) => {
+              const ps = r?.current_period_start ? new Date(String(r.current_period_start)) : null;
+              const pe = r?.current_period_end ? new Date(String(r.current_period_end)) : null;
+              const st = String(r?.status || "").toLowerCase();
+              return ps && pe && nowD >= ps && nowD <= pe && ["active","approved","trialing"].includes(st);
+            }) || (subs && subs.length ? subs[0] : null);
+            planId = pick?.plan_id || null;
+            if (!planId) {
+              const { data: pays } = await supabase
+                .from("payments")
+                .select("amount,status,created_at")
                 .eq("user_id", uid)
-                .eq("used_by_salon_id", s.id)
-                .gte("used_at", startCycle.toISOString())
-                .lte("used_at", endCycle.toISOString())
-                .or("status.eq.used,used.eq.true");
-              detailed.push({
-                user_id: uid,
-                affiliated_at: r.affiliated_at,
-                used_count: Number(count || 0),
-                full_name: nameById.get(uid) || "",
-                email: emailById.get(uid) || "",
+                .eq("status", "approved");
+              const within = (pays || []).filter((p: any) => {
+                const d = p?.created_at ? new Date(String(p.created_at)) : null;
+                return d && d >= startCycle && d <= endCycle;
               });
+              if (within.length) {
+                const amt = Number(within[0].amount || 0);
+                const { data: plans } = await supabase
+                  .from("plans")
+                  .select("id,name,price,active")
+                  .eq("active", true);
+                const byAmount = (plans || []).find((pl: any) => {
+                  const pc = Number(pl.price || 0);
+                  return pc === Math.round(amt) || Math.round(pc / 100) === Math.round(amt);
+                });
+                planId = byAmount?.id || null;
+                planName = byAmount?.name || "";
+              }
             }
-            setAffiliates(detailed);
+            if (planId && !planName) {
+              const { data: pinfo } = await supabase
+                .from("plans")
+                .select("name")
+                .eq("id", planId)
+                .maybeSingle();
+              planName = String((pinfo as any)?.name || "");
+            }
+            detailed.push({
+              user_id: uid,
+              affiliated_at: r.affiliated_at,
+              used_count: Number(count || 0),
+              full_name: nameById.get(uid) || "",
+              email: emailById.get(uid) || "",
+              plan_name: planName || "",
+            });
+          }
+          setAffiliates(detailed);
           }
         } else {
           setAffiliates([]);
@@ -226,6 +327,13 @@ const OwnerDashboardPage = () => {
             const salonAmt = Number(totalsRow[0]?.salon_amount || 0);
             setComputedTotals({ gross, platform, salon: salonAmt });
           }
+          const { count: vcount } = await supabase
+            .from("visit_logs")
+            .select("id", { count: "exact" })
+            .eq("salon_id", salon.id)
+            .gte("created_at", start.toISOString())
+            .lte("created_at", end.toISOString());
+          setValidationsCount(Number(vcount || 0));
         },
       )
       .on(
@@ -361,6 +469,69 @@ const OwnerDashboardPage = () => {
       const platform = Math.round(gross * 0.2 * 100) / 100;
       const salonAmt = gross - platform;
       setComputedTotals({ gross, platform, salon: salonAmt });
+      {
+        const usedTotal = affiliates.reduce((acc: number, it: any) => acc + Number(it.used_count || 0), 0);
+        if (usedTotal > 0) setValidationsCount(usedTotal);
+      }
+
+      // Fallback adicional: nenhum código usado, mas assinaturas ativas no ciclo
+      if (gross <= 0) {
+        let subsGross = 0;
+        for (const u of affiliates) {
+          const uid = u.user_id || u.id;
+          // Tenta assinatura ativa
+          const { data: uSub } = await supabase
+            .from("user_subscriptions")
+            .select("plan_id,status,current_period_start,current_period_end")
+            .eq("user_id", uid)
+            .order("current_period_end", { ascending: false })
+            .limit(3);
+          let planId: string | null = null;
+          const nowD = new Date();
+          const pick = (uSub || []).find((r: any) => {
+            const ps = r?.current_period_start ? new Date(String(r.current_period_start)) : null;
+            const pe = r?.current_period_end ? new Date(String(r.current_period_end)) : null;
+            const st = String(r?.status || "").toLowerCase();
+            return ps && pe && nowD >= ps && nowD <= pe && ["active","approved","trialing"].includes(st);
+          }) || (uSub && uSub.length ? uSub[0] : null);
+          planId = pick?.plan_id || null;
+          if (!planId) {
+            // Tenta mapear pelo pagamento aprovado dentro do ciclo
+            const { data: pays } = await supabase
+              .from("payments")
+              .select("amount,status,created_at")
+              .eq("user_id", uid)
+              .eq("status", "approved");
+            const within = (pays || []).filter((p: any) => {
+              const d = p?.created_at ? new Date(String(p.created_at)) : null;
+              return d && d >= start && d <= end;
+            });
+            if (within.length) {
+              const amt = Number(within[0].amount || 0);
+              const { data: planList } = await supabase
+                .from("plans")
+                .select("id,price,active")
+                .eq("active", true);
+              const byAmount = (planList || []).find((pl: any) => Number(pl.price || 0) === amt);
+              planId = byAmount?.id || null;
+            }
+          }
+          if (!planId) continue;
+          const { data: plan } = await supabase
+            .from("plans")
+            .select("price")
+            .eq("id", planId)
+            .maybeSingle();
+          const priceCents = Number((plan as any)?.price ?? 0);
+          const priceBr = Math.round((priceCents / 100) * 100) / 100;
+          subsGross += priceBr;
+        }
+        if (subsGross > 0) {
+          const platform2 = Math.round(subsGross * 0.2 * 100) / 100;
+          const salon2 = subsGross - platform2;
+          setComputedTotals({ gross: subsGross, platform: platform2, salon: salon2 });
+        }
+      }
     };
     computeFromAffiliates();
   }, [salon?.id, affiliates, computedTotals.gross]);
@@ -369,10 +540,28 @@ const OwnerDashboardPage = () => {
     const monthValidations = computedTotals.gross;
     const platformShare = computedTotals.platform;
     const salonShare = computedTotals.salon;
-    const pendingPayouts = payouts.filter((p) => p.status === "pending").reduce((acc, p) => acc + Number(p.amount || 0), 0);
+    const now = new Date();
+    const cs = new Date(now.getFullYear(), now.getMonth(), 1);
+    const ce = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const pendingPayouts = payouts
+      .filter((p) => {
+        const st = String(p.status || "").toLowerCase();
+        const ps = (p as any).period_start ? new Date((p as any).period_start) : null;
+        const pe = (p as any).period_end ? new Date((p as any).period_end) : null;
+        return st === "pending" && ps && pe && ps >= cs && pe <= ce;
+      })
+      .reduce((acc, p) => acc + Number(p.amount || 0), 0);
     const paidPayouts = payouts.filter((p) => p.status === "paid").reduce((acc, p) => acc + Number(p.amount || 0), 0);
     return { monthValidations, platformShare, salonShare, pendingPayouts, paidPayouts };
   }, [computedTotals, payouts]);
+
+  const withdrawWindow = useMemo(() => {
+    const now = new Date();
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const active = now >= start;
+    return { start, end, active };
+  }, []);
 
   if (loading) {
     return (
@@ -396,10 +585,9 @@ const OwnerDashboardPage = () => {
       <Card>
         <CardHeader>
           <CardTitle>Total de validações (mês)</CardTitle>
-          <CardDescription>Bruto acumulado</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold">R$ {totals.monthValidations.toFixed(2)}</p>
+          <p className="text-sm text-muted-foreground">{validationsCount} validações aceitas</p>
         </CardContent>
       </Card>
       <Card>
@@ -417,15 +605,47 @@ const OwnerDashboardPage = () => {
           <CardDescription>Recebidos e pendentes</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded border p-3">
-              <div className="text-sm text-muted-foreground">Pendentes</div>
-              <div className="text-2xl font-bold">R$ {totals.pendingPayouts.toFixed(2)}</div>
+          <div className="grid gap-4 md:grid-cols-3 mb-4">
+            <div className="rounded-xl border p-4 bg-muted/40 flex items-center justify-between">
+              <div>
+                <div className="text-xs text-muted-foreground">Disponível</div>
+                <div className="text-2xl font-bold">R$ {availableWithdraw.toFixed(2)}</div>
+              </div>
+              <Wallet className="h-6 w-6 text-primary" />
             </div>
-            <div className="rounded border p-3">
-              <div className="text-sm text-muted-foreground">Recebidos</div>
-              <div className="text-2xl font-bold">R$ {totals.paidPayouts.toFixed(2)}</div>
+            <div className="rounded-xl border p-4 bg-muted/40 flex items-center justify-between md:col-span-2">
+              <div>
+                <div className="text-xs text-muted-foreground">Janela de saque</div>
+                <div className="text-sm font-medium flex items-center gap-2"><CalendarDays className="h-4 w-4" />{formatDateBR(withdrawWindow.start)} — {formatDateBR(withdrawWindow.end)}</div>
+              </div>
+              <span className={withdrawWindow.active ? "inline-flex items-center rounded px-2 py-1 bg-green-100 text-green-700" : "inline-flex items-center rounded px-2 py-1 bg-amber-100 text-amber-700"}>{withdrawWindow.active ? "Ativa" : "Em breve"}</span>
             </div>
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            <div className="md:col-span-2">
+              <Input placeholder="PIX (CPF/CNPJ) vinculado ao salão" value={pixKey} onChange={(e) => setPixKey(e.target.value)} />
+            </div>
+            <div className="md:col-span-1">
+              <div className="text-xs text-muted-foreground mb-1">Digite o valor do saque em reais (BRL)</div>
+              <Input placeholder="Valor do saque (BRL)" type="text" value={withdrawAmount} onChange={(e) => setWithdrawAmount(formatBRLInput(e.target.value))} />
+            </div>
+            <div className="md:col-span-3 text-sm text-muted-foreground">Disponível para saque: R$ {availableWithdraw.toFixed(2)}</div>
+            <div className="md:col-span-1">
+              <Button className="w-full" disabled={requesting || !salon?.id || availableWithdraw <= 0 || !pixKey.trim() || withdrawAmtNum <= 0 || withdrawAmtNum > availableWithdraw} onClick={async () => {
+                if (!salon?.id) return;
+                setRequesting(true);
+                const { data, error } = await supabase.rpc("request_withdraw_for_salon", { p_salon: salon.id, p_pix_key: pixKey.trim(), p_amount: withdrawAmtNum });
+                if (!error && data?.ok) {
+                  toast.success("Solicitação enviada ao admin");
+                  setPixKey("");
+                  setWithdrawAmount("");
+                } else {
+                  toast.error(error?.message || String(data?.error || "Falha ao solicitar"));
+                }
+                setRequesting(false);
+              }}>Solicitar Saque</Button>
+            </div>
+            <div className="md:col-span-3 text-xs text-muted-foreground">Saque disponível somente na última semana de cada mês.</div>
           </div>
         </CardContent>
       </Card>
@@ -437,13 +657,14 @@ const OwnerDashboardPage = () => {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {affiliates.map((u) => (
-              <div key={u.user_id || u.id} className="rounded border p-3">
-                <div className="font-medium">{displayNameFor(u)}</div>
-                <div className="text-sm text-muted-foreground">Afiliado em: {u.affiliated_at ? new Date(u.affiliated_at).toLocaleDateString() : "--"}</div>
-                <div className="text-sm">Validações no ciclo atual: {u.used_count}</div>
-              </div>
-            ))}
+              {affiliates.map((u) => (
+                <div key={u.user_id || u.id} className="rounded border p-3">
+                  <div className="font-medium">{displayNameFor(u)}</div>
+                  <div className="text-sm text-muted-foreground">Afiliado em: {u.affiliated_at ? new Date(u.affiliated_at).toLocaleDateString() : "--"}</div>
+                  <div className="text-sm">Validações no ciclo atual: {u.used_count}</div>
+                  <div className="text-sm">Plano: {u.plan_name || "--"}</div>
+                </div>
+              ))}
             {!affiliates.length && (
               <div className="text-sm text-muted-foreground">Nenhum usuário afiliado</div>
             )}

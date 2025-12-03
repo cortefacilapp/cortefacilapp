@@ -74,6 +74,7 @@ const AdminLayout = () => {
               <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin/usuarios")}>Usuários</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin/planos")}>Planos</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin/faturas")}>Faturas Pendentes</Button>
+              <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin/saques")}>Solicitações de Saque</Button>
             </nav>
           </div>
           <Button variant="outline" className="text-primary border-primary" onClick={handleSignOut} disabled={loading}>
@@ -91,6 +92,7 @@ const AdminLayout = () => {
               <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/usuarios"); }}>Usuários</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/planos"); }}>Planos</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/faturas"); }}>Faturas Pendentes</Button>
+              <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/saques"); }}>Solicitações de Saque</Button>
             </div>
           </div>
         )}
