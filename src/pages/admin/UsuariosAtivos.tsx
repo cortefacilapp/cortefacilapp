@@ -57,8 +57,8 @@ const UsuariosAtivos = () => {
   useEffect(() => {
     const loadDetails = async () => {
       if (!selected?.id) { setPlanInfo(null); setAffiliation(null); return; }
-      // Plano ativo
-      const { data: sub } = await supabase
+      // Plano ativo com fallback por período e status
+      const { data: subActive } = await supabase
         .from("user_subscriptions")
         .select("plan_id,status,current_period_start,current_period_end")
         .eq("user_id", selected.id)
@@ -66,7 +66,23 @@ const UsuariosAtivos = () => {
         .order("current_period_end", { ascending: false })
         .maybeSingle();
       type SubRow = { plan_id?: string | null; status?: string | null; current_period_start?: string | null; current_period_end?: string | null };
-      const subRow = sub as SubRow | null;
+      let subRow = subActive as SubRow | null;
+      if (!subRow) {
+        const { data: subsAll } = await supabase
+          .from("user_subscriptions")
+          .select("plan_id,status,current_period_start,current_period_end")
+          .eq("user_id", selected.id)
+          .order("current_period_end", { ascending: false })
+          .limit(5);
+        const now = new Date();
+        const pick = (subsAll || []).find((s: any) => {
+          const ps = s?.current_period_start ? new Date(String(s.current_period_start)) : null;
+          const pe = s?.current_period_end ? new Date(String(s.current_period_end)) : null;
+          const st = String(s?.status || "").toLowerCase();
+          return ps && pe && now >= ps && now <= pe && ["active","approved","trialing"].includes(st);
+        }) || (subsAll && subsAll.length ? subsAll[0] : null);
+        subRow = (pick as SubRow | null) || null;
+      }
       if (subRow?.plan_id) {
         const { data: p } = await supabase
           .from("plans")

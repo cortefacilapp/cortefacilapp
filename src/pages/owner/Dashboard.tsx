@@ -149,7 +149,51 @@ const OwnerDashboardPage = () => {
         const ownerId = userData?.user?.id || null;
         if (ownerId) {
           const { data: aff } = await supabase.rpc("affiliates_for_owner", { p_owner: ownerId });
-          setAffiliates(aff || []);
+          if (aff && Array.isArray(aff) && aff.length) {
+            setAffiliates(aff);
+          } else {
+            const startCycle = new Date(now.getFullYear(), now.getMonth(), 1);
+            const endCycle = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+            const { data: ua } = await supabase
+              .from("user_affiliations")
+              .select("user_id, affiliated_at")
+              .eq("salon_id", s.id);
+            const base = ua || [];
+            const ids = base.map((r: any) => r.user_id).filter(Boolean);
+            let contacts: any[] = [];
+            if (ids.length) {
+              const { data: c } = await supabase.rpc("user_contacts_for_users", { p_ids: ids });
+              contacts = c || [];
+            }
+            const nameById = new Map<string, string>();
+            const emailById = new Map<string, string>();
+            contacts.forEach((n: any) => {
+              if (n && n.user_id) {
+                nameById.set(String(n.user_id), String(n.full_name || ""));
+                emailById.set(String(n.user_id), String(n.email || ""));
+              }
+            });
+            const detailed = [] as any[];
+            for (const r of base) {
+              const uid = r.user_id;
+              const { count } = await supabase
+                .from("codes")
+                .select("id", { count: "exact" })
+                .eq("user_id", uid)
+                .eq("used_by_salon_id", s.id)
+                .gte("used_at", startCycle.toISOString())
+                .lte("used_at", endCycle.toISOString())
+                .or("status.eq.used,used.eq.true");
+              detailed.push({
+                user_id: uid,
+                affiliated_at: r.affiliated_at,
+                used_count: Number(count || 0),
+                full_name: nameById.get(uid) || "",
+                email: emailById.get(uid) || "",
+              });
+            }
+            setAffiliates(detailed);
+          }
         } else {
           setAffiliates([]);
         }

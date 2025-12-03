@@ -108,7 +108,7 @@ const SalonsBrowse = () => {
                         let canChange = true;
                         // regra: só permitir troca no fim do ciclo
                         const { data: sub } = await supabase
-                          .from("subscriptions")
+                          .from("user_subscriptions")
                           .select("current_period_end,status")
                           .eq("user_id", uid)
                           .order("current_period_end", { ascending: false })
@@ -123,16 +123,31 @@ const SalonsBrowse = () => {
                         toast.error("Você só pode trocar uma vez por mês ou no fim do ciclo");
                         return;
                       }
-                      const { error } = await supabase
-                        .from("user_affiliations")
-                        .upsert({ user_id: uid, salon_id: s.id, updated_at: new Date().toISOString() })
-                        .select("user_id");
-                      if (error) {
-                        toast.error(error.message || "Falha ao afiliar-se");
-                      } else {
-                        setAffId(s.id);
-                        toast.success(`Afiliado ao salão: ${s.name}`);
+                      try {
+                        const { data: res, error } = await supabase
+                          .rpc("set_user_affiliation", { p_user: uid, p_salon: s.id });
+                        if (error) throw error;
+                      } catch (_err) {
+                        const { data: existing } = await supabase
+                          .from("user_affiliations")
+                          .select("user_id")
+                          .eq("user_id", uid)
+                          .maybeSingle();
+                        if (existing?.user_id) {
+                          const { error: updErr } = await supabase
+                            .from("user_affiliations")
+                            .update({ salon_id: s.id, affiliated_at: new Date().toISOString() })
+                            .eq("user_id", uid);
+                          if (updErr) { toast.error(updErr.message || "Falha ao atualizar afiliação"); return; }
+                        } else {
+                          const { error: insErr } = await supabase
+                            .from("user_affiliations")
+                            .insert({ user_id: uid, salon_id: s.id, affiliated_at: new Date().toISOString() });
+                          if (insErr) { toast.error(insErr.message || "Falha ao criar afiliação"); return; }
+                        }
                       }
+                      setAffId(s.id);
+                      toast.success(`Afiliado ao salão: ${s.name}`);
                     } catch (e) {
                       toast.error((e as any)?.message || "Erro ao afiliar-se");
                     }

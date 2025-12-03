@@ -9,21 +9,22 @@ import { toast } from "sonner";
 import { LogOut, Scissors, QrCode, MapPin } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-interface CustomerDashboardProps {
-  user: User;
-}
+type PlanRow = { name: string; price: number; interval?: string | null; monthly_credits?: number | null; cuts_per_month?: number | null };
+type SubRow = { plan_id?: string | null; status?: string | null; current_period_start?: string | null; current_period_end?: string | null };
+type VisitItem = { salonName: string; visitedAt: string; code?: string };
+
+interface CustomerDashboardProps { user: User; }
 
 const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [displayName, setDisplayName] = useState<string>(user.user_metadata?.name || "");
-  type PlanRow = { name: string; price: number; interval?: string | null; monthly_credits?: number | null; cuts_per_month?: number | null };
   const [plan, setPlan] = useState<(PlanRow & { status?: string | null }) | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
   const [codeModalOpen, setCodeModalOpen] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [affiliationName, setAffiliationName] = useState<string | null>(null);
-  type VisitItem = { salonName: string; visitedAt: string; code?: string };
+  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
   const [visits, setVisits] = useState<VisitItem[]>([]);
 
   useEffect(() => {
@@ -94,17 +95,31 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
     loadVisits();
   }, [user.id]);
 
-  useEffect(() => {
-    const loadPlan = async () => {
-      const { data: sub } = await supabase
+  const fetchPlanAndCredits = async () => {
+      const { data: subActive } = await supabase
         .from("user_subscriptions")
         .select("plan_id,status,current_period_start,current_period_end")
         .eq("user_id", user.id)
         .eq("status", "active")
         .order("current_period_end", { ascending: false })
         .maybeSingle();
-      type SubRow = { plan_id?: string | null; status?: string | null; current_period_start?: string | null; current_period_end?: string | null };
-      const subRow = sub as SubRow | null;
+      let subRow = subActive as SubRow | null;
+      if (!subRow) {
+        const { data: subsAll } = await supabase
+          .from("user_subscriptions")
+          .select("plan_id,status,current_period_start,current_period_end")
+          .eq("user_id", user.id)
+          .order("current_period_end", { ascending: false })
+          .limit(5);
+        const now = new Date();
+        const pick = (subsAll || []).find((s: any) => {
+          const ps = s?.current_period_start ? new Date(String(s.current_period_start)) : null;
+          const pe = s?.current_period_end ? new Date(String(s.current_period_end)) : null;
+          const st = String(s?.status || "").toLowerCase();
+          return ps && pe && now >= ps && now <= pe && ["active","approved","trialing"].includes(st);
+        }) || (subsAll && subsAll.length ? subsAll[0] : null);
+        subRow = (pick as SubRow | null) || null;
+      }
       if (subRow?.plan_id) {
           const { data: p } = await supabase
             .from("plans")
@@ -135,55 +150,85 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
               const usedCount = Number(count ?? 0);
               setCredits(Math.max(0, Number(totalCredits) - usedCount));
             }
+            if (subRow.current_period_end) {
+              const nowD = new Date();
+              const endD = new Date(String(subRow.current_period_end));
+              const rem = Math.ceil((endD.getTime() - nowD.getTime()) / (1000 * 60 * 60 * 24));
+              setDaysRemaining(Math.max(0, rem));
+            } else {
+              setDaysRemaining(null);
+            }
 
-          // realtime subscription to credits updates
-          const ch = supabase.channel("credits_and_codes_updates")
-            .on("postgres_changes", {
-              event: "UPDATE",
-              schema: "public",
-              table: "user_credits",
-            }, (payload) => {
-              const row = (payload.new as { user_id?: string; plan_id?: string; period_start?: string; remaining?: number | null }) || {};
-              if (row.user_id === user.id && row.plan_id === subRow?.plan_id && row.period_start === subRow?.current_period_start) {
-                const newRemaining = row.remaining;
-                if (newRemaining !== undefined && newRemaining !== null) setCredits(Number(newRemaining));
+        } else {
+          const { data: pays } = await supabase
+            .from("payments")
+            .select("amount,status,created_at")
+            .eq("user_id", user.id)
+            .eq("status", "approved")
+            .order("created_at", { ascending: false })
+            .limit(1);
+          const last = Array.isArray(pays) && pays.length ? pays[0] : null;
+          const amt = last ? Number(last.amount) : 0;
+          if (amt > 0) {
+            const { data: p2 } = await supabase
+              .from("plans")
+              .select("name,price,interval,monthly_credits,cuts_per_month")
+              .eq("price", amt)
+              .maybeSingle();
+            const pr = (p2 as PlanRow | null);
+            if (pr) {
+              setPlan({ ...pr, status: "approved" });
+              const totalCredits = pr.monthly_credits ?? pr.cuts_per_month ?? null;
+              if (totalCredits !== null) {
+                const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+                const end = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59).toISOString();
+                const { count } = await supabase
+                  .from("codes")
+                  .select("id", { count: "exact" })
+                  .eq("user_id", user.id)
+                  .gte("used_at", start as any)
+                  .lte("used_at", end as any)
+                  .or("status.eq.used,used.eq.true");
+                const usedCount = Number(count ?? 0);
+                setCredits(Math.max(0, Number(totalCredits) - usedCount));
               }
-            })
-            .on("postgres_changes", {
-              event: "UPDATE",
-              schema: "public",
-              table: "codes",
-            }, async (payload) => {
-              const row = (payload.new as { user_id?: string; status?: string | null; used?: boolean | null }) || {};
-              if (row.user_id === user.id && (row.status === "used" || row.used === true)) {
-                const { data: p2 } = await supabase
-                  .from("plans")
-                  .select("monthly_credits,cuts_per_month")
-                  .eq("id", subRow?.plan_id as string)
-                  .maybeSingle();
-                const totalCredits = (p2 as { monthly_credits?: number | null; cuts_per_month?: number | null } | null)?.monthly_credits ?? (p2 as { monthly_credits?: number | null; cuts_per_month?: number | null } | null)?.cuts_per_month ?? null;
-                if (totalCredits !== null) {
-                  const { count } = await supabase
-                    .from("codes")
-                    .select("id", { count: "exact" })
-                    .eq("user_id", user.id)
-                    .gte("used_at", subRow?.current_period_start as any)
-                    .lte("used_at", subRow?.current_period_end as any)
-                    .or("status.eq.used,used.eq.true");
-                  const usedCount = Number(count ?? 0);
-                  setCredits(Math.max(0, Number(totalCredits) - usedCount));
-                }
+              if (last?.created_at) {
+                const startD = new Date(String(last.created_at));
+                const endD = new Date(startD.getTime() + 30 * 24 * 60 * 60 * 1000);
+                const nowD = new Date();
+                const rem = Math.ceil((endD.getTime() - nowD.getTime()) / (1000 * 60 * 60 * 24));
+                setDaysRemaining(Math.max(0, rem));
+              } else {
+                setDaysRemaining(null);
               }
-            })
-            .subscribe();
-
-          return () => {
-            try { ch.unsubscribe(); } catch (_) {}
-          };
+            }
+          }
         }
       }
     };
-    loadPlan();
+
+  useEffect(() => {
+    fetchPlanAndCredits();
+  }, [user.id]);
+
+  useEffect(() => {
+    const subscribePlan = async () => {
+      const ch = supabase
+        .channel(`user-subscriptions-customer-${user.id}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "user_subscriptions", filter: `user_id=eq.${user.id}` },
+          async () => { await fetchPlanAndCredits(); },
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "user_subscriptions", filter: `user_id=eq.${user.id}` },
+          async () => { await fetchPlanAndCredits(); },
+        )
+        .subscribe();
+      return () => { try { supabase.removeChannel(ch); } catch (_) {} };
+    };
+    subscribePlan();
   }, [user.id]);
 
   useEffect(() => {
@@ -371,7 +416,7 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
           <div className="mt-2 text-sm">
             {plan ? (
               <span className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">
-                Plano ativo: {String(plan?.name || "")} • {(Number(plan?.price || 0) / 100).toFixed(2)}/mês
+                Plano ativo: {String(plan?.name || "")} • {(Number(plan?.price || 0) / 100).toFixed(2)}/mês{credits !== null ? ` • créditos: ${credits}` : ""}
               </span>
             ) : (
               <span className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">Sem plano ativo</span>
@@ -383,20 +428,21 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
           {/* Subscription Card */}
           <Card className="border-2">
           <CardHeader>
-            <CardTitle>Meu Plano</CardTitle>
-            <CardDescription>Plano Popular - R$ 79,99/mês</CardDescription>
+            <CardTitle className="text-primary">Meu Plano</CardTitle>
+            {plan ? (
+              <CardDescription>
+                Plano: {String(plan.name)} - R$ {(Number(plan.price) / 100).toFixed(2)}/{plan.interval === "year" ? "ano" : "mês"}
+              </CardDescription>
+            ) : null}
             {affiliationName && (
-              <CardDescription>Afiliado ao salão: {affiliationName}</CardDescription>
+              <CardDescription>
+                Afiliado ao salão: {affiliationName}{daysRemaining !== null ? ` • ${daysRemaining} dias restantes` : ""}
+              </CardDescription>
             )}
           </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <p className="text-2xl font-bold text-primary">Meu Plano</p>
-                <p className="text-sm text-muted-foreground">
-                  {plan
-                    ? `${plan.name} - R$ ${(Number(plan.price) / 100).toFixed(2)}/${plan.interval === "year" ? "ano" : "mês"}`
-                    : "Nenhum plano ativo"}
-                </p>
+                
                 <Button className="mt-4 w-full" variant="outline" onClick={() => navigate("/planos")}>
                   Gerenciar Plano
                 </Button>

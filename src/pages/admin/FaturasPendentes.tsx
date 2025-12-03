@@ -39,6 +39,7 @@ const FaturasPendentes = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [query, setQuery] = useState("");
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
   const approve = async (r: Row) => {
     if (approvingId) return;
     setApprovingId(r.id);
@@ -46,10 +47,57 @@ const FaturasPendentes = () => {
       const body: Record<string, unknown> = { user_id: r.user_id };
       if (r.subscription_id) body.subscription_id = r.subscription_id;
       if (r.plan_id) body.plan_id = r.plan_id;
-      const { error } = await supabase.functions.invoke("approve-user-subscription", { body });
-      if (error) {
-        toast.error(error.message || "Erro ao aprovar");
-        return;
+      try {
+        const { data, error } = await supabase.functions.invoke("approve-user-subscription", { body });
+        if (error || !(data && (data as any).ok)) {
+          throw new Error(error?.message || "falha_edge_function");
+        }
+      } catch {
+        // Fallback local: ativa assinatura e aprova último pagamento pendente
+        const now = new Date();
+        const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        if (r.subscription_id) {
+          await supabase
+            .from("user_subscriptions")
+            .update({ status: "active", current_period_start: now.toISOString(), current_period_end: end.toISOString() })
+            .eq("id", r.subscription_id);
+        } else if (r.plan_id) {
+          // tenta localizar assinatura existente por usuário+plano, senão cria
+          const { data: sub } = await supabase
+            .from("user_subscriptions")
+            .select("id")
+            .eq("user_id", r.user_id)
+            .eq("plan_id", r.plan_id)
+            .order("created_at", { ascending: false })
+            .maybeSingle();
+          if (sub?.id) {
+            await supabase
+              .from("user_subscriptions")
+              .update({ status: "active", current_period_start: now.toISOString(), current_period_end: end.toISOString() })
+              .eq("id", sub.id);
+          } else {
+            await supabase
+              .from("user_subscriptions")
+              .insert({ user_id: r.user_id, plan_id: r.plan_id, status: "active", current_period_start: now.toISOString(), current_period_end: end.toISOString() });
+          }
+        }
+        const { data: pay } = await supabase
+          .from("payments")
+          .select("id, amount")
+          .eq("status", "pending")
+          .eq("user_id", r.user_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (pay?.id) {
+          const gross = Number(pay.amount) || 0;
+          const platform_amount = Math.round(gross * 0.2);
+          const salon_amount = gross - platform_amount;
+          await supabase
+            .from("payments")
+            .update({ status: "approved", platform_amount, salon_amount, provider_payment_id: "manual_whatsapp" })
+            .eq("id", pay.id);
+        }
       }
       toast.success("Fatura aprovada");
       setRows((prev) => prev.filter((x) => x.id !== r.id));
@@ -57,6 +105,27 @@ const FaturasPendentes = () => {
       toast.error(e?.message || "Erro ao aprovar");
     } finally {
       setApprovingId(null);
+    }
+  };
+
+  const reject = async (r: Row) => {
+    if (rejectingId) return;
+    setRejectingId(r.id);
+    try {
+      const { error } = await supabase
+        .from("payments")
+        .update({ status: "rejected", provider_payment_id: r.provider_payment_id || "rejected_admin" })
+        .eq("id", r.id);
+      if (error) {
+        toast.error(error.message || "Erro ao reprovar");
+        return;
+      }
+      toast.success("Fatura reprovada");
+      setRows((prev) => prev.filter((x) => x.id !== r.id));
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao reprovar");
+    } finally {
+      setRejectingId(null);
     }
   };
 
@@ -207,6 +276,7 @@ const FaturasPendentes = () => {
                   </div>
                   <div className="mt-2 text-xs text-muted-foreground">Aprovação não necessária. Processamento automático após pagamento.</div>
                   <Button className="mt-2 w-full" onClick={() => approve(r)} disabled={approvingId === r.id}>Aprovar manualmente</Button>
+                  <Button variant="destructive" className="mt-2 w-full" onClick={() => reject(r)} disabled={rejectingId === r.id}>Reprovar</Button>
                 </div>
               ))}
               {!filtered.length && (

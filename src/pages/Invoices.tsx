@@ -8,11 +8,13 @@ import { toast } from "sonner";
 
 type PaymentRow = { id: string; amount: number; currency: string; status: string; created_at: string; provider: string | null; provider_payment_id: string | null };
 type SubscriptionRow = { id: string; plan_id: string | null; status: string; current_period_end: string | null };
+type PlanRow = { name: string; price: number; interval: string | null; monthly_credits: number | null };
 
 const Invoices = () => {
   const [loading, setLoading] = useState(true);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [subscription, setSubscription] = useState<SubscriptionRow | null>(null);
+  const [planName, setPlanName] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -25,9 +27,21 @@ const Invoices = () => {
         .from("user_subscriptions")
         .select("id, plan_id, status, current_period_end")
         .eq("user_id", uid)
-        .order("updated_at", { ascending: false })
+        .order("current_period_end", { ascending: false })
         .maybeSingle();
-      setSubscription((sub as SubscriptionRow | null) || null);
+      const subRow = (sub as SubscriptionRow | null) || null;
+      setSubscription(subRow);
+      if (subRow?.plan_id) {
+        const { data: plan } = await supabase
+          .from("plans")
+          .select("name,price,interval,monthly_credits")
+          .eq("id", subRow.plan_id)
+          .maybeSingle();
+        const pr = (plan as PlanRow | null);
+        setPlanName(pr?.name || null);
+      } else {
+        setPlanName(null);
+      }
       const { data: pays } = await supabase
         .from("payments")
         .select("id, amount, currency, status, created_at, provider, provider_payment_id")
@@ -38,6 +52,67 @@ const Invoices = () => {
       setLoading(false);
     };
     load();
+  }, []);
+
+  useEffect(() => {
+    const subRealtime = async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData?.user?.id;
+      if (!uid) return;
+      const ch = supabase
+        .channel(`user-subscriptions-invoices-${uid}`)
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "user_subscriptions", filter: `user_id=eq.${uid}` },
+          (payload) => {
+            const next = (payload.new as SubscriptionRow) || null;
+            if (next) {
+              setSubscription(next);
+              if (next.plan_id) {
+                supabase
+                  .from("plans")
+                  .select("name,price,interval,monthly_credits")
+                  .eq("id", next.plan_id)
+                  .maybeSingle()
+                  .then(({ data }) => {
+                    const pr = (data as PlanRow | null);
+                    setPlanName(pr?.name || null);
+                  });
+              } else {
+                setPlanName(null);
+              }
+            }
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "user_subscriptions", filter: `user_id=eq.${uid}` },
+          (payload) => {
+            const next = (payload.new as SubscriptionRow) || null;
+            if (next) {
+              setSubscription(next);
+              if (next.plan_id) {
+                supabase
+                  .from("plans")
+                  .select("name,price,interval,monthly_credits")
+                  .eq("id", next.plan_id)
+                  .maybeSingle()
+                  .then(({ data }) => {
+                    const pr = (data as PlanRow | null);
+                    setPlanName(pr?.name || null);
+                  });
+              } else {
+                setPlanName(null);
+              }
+            }
+          },
+        )
+        .subscribe();
+      return () => {
+        try { supabase.removeChannel(ch); } catch (_) {}
+      };
+    };
+    subRealtime();
   }, []);
 
   const payNow = async () => {
@@ -94,7 +169,7 @@ const Invoices = () => {
           <CardContent>
             <div className="flex items-center justify-between">
               <div className="text-sm text-muted-foreground">
-                {subscription ? `Status: ${subscription.status}` : "Nenhuma assinatura"}
+                {subscription ? `Status: ${subscription.status}${planName ? " • Plano: " + planName : ""}` : "Nenhuma assinatura"}
               </div>
               <Button onClick={payNow}>Pagar Mensalidade</Button>
             </div>
