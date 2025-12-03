@@ -30,6 +30,7 @@ const Invoices = () => {
         .from("user_subscriptions")
         .select("id, plan_id, status, current_period_end")
         .eq("user_id", uid)
+        .in("status", ["active", "approved", "trialing"]) 
         .order("current_period_end", { ascending: false })
         .maybeSingle();
       const subRow = (sub as SubscriptionRow | null) || null;
@@ -220,7 +221,7 @@ const Invoices = () => {
                           : "bg-gray-100 text-gray-700"
                       }`}
                     >
-                      {subscription.status}
+                      {subscription.status === "active" ? "Assinatura ativa" : subscription.status}
                     </span>
                     {subscription.current_period_end && (
                       <span className="text-xs">Vence: {new Date(subscription.current_period_end).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span>
