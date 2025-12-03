@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { Home } from "lucide-react";
 
 type PaymentRow = { id: string; amount: number; currency: string; status: string; created_at: string; provider: string | null; provider_payment_id: string | null };
 type SubscriptionRow = { id: string; plan_id: string | null; status: string; current_period_end: string | null };
@@ -109,7 +110,7 @@ const Invoices = () => {
         )
         .subscribe();
       return () => {
-        try { supabase.removeChannel(ch); } catch (_) {}
+        supabase.removeChannel(ch);
       };
     };
     subRealtime();
@@ -152,47 +153,102 @@ const Invoices = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="fixed inset-x-0 top-0 z-50 border-b bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background">
+      <header className="fixed inset-x-0 top-0 z-50 border-b bg-card">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div className="text-xl font-bold">Faturas</div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/dashboard")}>Dashboard</Button>
+            <Button variant="outline" onClick={() => navigate("/dashboard")}>
+              <Home className="mr-2 h-4 w-4" />
+              Dashboard
+            </Button>
           </div>
         </div>
       </header>
       <main className="container mx-auto px-4 py-8 pt-20">
-        <Card className="mb-6">
-          <CardHeader>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold">Faturas e Pagamentos</h1>
+          <p className="text-muted-foreground">Acompanhe sua assinatura e histórico de pagamentos</p>
+        </div>
+
+        <Card className="mb-6 border-2 hover:shadow-lg transition-shadow">
+          <CardHeader className="bg-primary/5 rounded-md">
             <CardTitle>Assinatura</CardTitle>
+            {planName && <CardDescription>Plano: {planName}</CardDescription>}
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                {subscription ? `Status: ${subscription.status}${planName ? " • Plano: " + planName : ""}` : "Nenhuma assinatura"}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                {subscription ? (
+                  <>
+                    <span
+                      className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                        ["approved", "active", "trialing"].includes(subscription.status)
+                          ? "bg-green-100 text-green-700"
+                          : subscription.status === "pending"
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
+                      {subscription.status}
+                    </span>
+                    {subscription.current_period_end && (
+                      <span className="text-xs">Vence: {new Date(subscription.current_period_end).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span>
+                    )}
+                  </>
+                ) : (
+                  <span>Nenhuma assinatura</span>
+                )}
               </div>
               <Button onClick={payNow}>Pagar Mensalidade</Button>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
+        <Card className="border-2 hover:shadow-lg transition-shadow">
+          <CardHeader className="bg-primary/5 rounded-md">
             <CardTitle>Histórico de Faturas</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-3 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
               {payments.map((p) => (
-                <div key={p.id} className="rounded border p-3 text-sm">
-                  <div className="font-medium">{p.provider?.toUpperCase()} • {p.provider_payment_id || "--"}</div>
-                  <div>Valor: R$ {(Number(p.amount) / 100).toFixed(2)} {p.currency}</div>
-                  <div>Status: {p.status}</div>
-                  <div>Data: {new Date(p.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</div>
-                  <Button className="mt-2 w-full" onClick={() => sendWhatsapp(p)}>Enviar comprovante via WhatsApp</Button>
+                <div key={p.id} className="rounded-md border-2 bg-card p-4 text-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">{p.provider?.toUpperCase()}</div>
+                    <div className="text-xs text-muted-foreground">{p.provider_payment_id || "--"}</div>
+                  </div>
+                  <div className="mt-2">
+                    {(() => {
+                      try {
+                        const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((Number(p.amount) || 0) / 100);
+                        return <div className="font-semibold">{brl} <span className="text-xs text-muted-foreground">{p.currency}</span></div>;
+                      } catch {
+                        const v = (Number(p.amount) || 0) / 100;
+                        return <div className="font-semibold">R$ {v.toFixed(2).replace('.', ',')} <span className="text-xs text-muted-foreground">{p.currency}</span></div>;
+                      }
+                    })()}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between">
+                    <span
+                      className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
+                        ["approved", "active"].includes(p.status)
+                          ? "bg-green-100 text-green-700"
+                          : p.status === "pending"
+                          ? "bg-amber-100 text-amber-700"
+                          : p.status === "rejected"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
+                      {p.status}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span>
+                  </div>
+                  <Button variant="outline" className="mt-3 w-full" onClick={() => sendWhatsapp(p)}>Enviar comprovante via WhatsApp</Button>
                 </div>
               ))}
               {!payments.length && (
-                <div className="text-sm text-muted-foreground">Nenhuma fatura registrada</div>
+                <div className="rounded-md border bg-muted/40 p-4 text-sm text-muted-foreground">Nenhuma fatura registrada</div>
               )}
             </div>
           </CardContent>
