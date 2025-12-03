@@ -42,7 +42,26 @@ const PlansSelect = () => {
 
   const checkout = async (planId: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke("user-create-checkout", { body: { plan_id: planId } });
+      const useEdge = String((import.meta as any).env?.VITE_USE_EDGE_FUNCTIONS || "false").toLowerCase() === "true";
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData?.user?.id;
+      if (!uid) { toast.error("Faça login"); return; }
+      const { data: plan } = await supabase.from("plans").select("name,price").eq("id", planId).maybeSingle();
+      const pr = plan as any;
+      const now = new Date();
+      const end = new Date(now);
+      end.setMonth(end.getMonth() + 1);
+      const { data: subIns, error: subErr } = await supabase
+        .from("user_subscriptions")
+        .insert({ user_id: uid, plan_id: planId, status: "pending", current_period_start: now.toISOString(), current_period_end: end.toISOString() })
+        .select("id")
+        .single();
+      if (subErr || !subIns?.id) throw subErr || new Error("Falha ao criar assinatura");
+      const amount = Math.round(Number(pr?.price || 0) / 100 * 100) / 100; // reais
+      if (!useEdge) { navigate(`/planos/pagar/${planId}`); return; }
+      const { data, error } = await supabase.functions.invoke("user-create-checkout", {
+        body: { subscription_id: subIns.id, plan_name: String(pr?.name || "Assinatura"), amount }
+      });
       if (error || !data?.init_point) {
         navigate(`/planos/pagar/${planId}`);
         return;

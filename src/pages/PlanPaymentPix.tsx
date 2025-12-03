@@ -12,7 +12,9 @@ const PlanPaymentPix = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [plan, setPlan] = useState<any | null>(null);
+  const [planIdState, setPlanIdState] = useState<string | null>(null);
   const [pixCode, setPixCode] = useState<string>("");
+  const [pixImageBase64, setPixImageBase64] = useState<string>("");
   const [step, setStep] = useState<number>(1);
   const [secondsLeft, setSecondsLeft] = useState<number>(60);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
@@ -45,44 +47,10 @@ const PlanPaymentPix = () => {
         navigate("/planos");
         return;
       }
+      setPlanIdState(p.id);
       setPlan(p);
       try {
-        const amount = Number(p.price) / 100;
-        const key = "d66c563a-71b6-4e2b-9292-8c71d218eb31";
-        const code = generatePixCopyPaste({
-          key,
-          merchantName: "CORTEFACIL",
-          merchantCity: "BRASILIA",
-          amount,
-          description: `Assinatura ${p.name}`,
-        });
-        setPixCode(code);
-        setPaymentKey(key);
-        setStep(2);
-        const { error: recErr } = await supabase.functions.invoke("record-pending-payment", {
-          body: { amount, currency: "BRL", provider: "pix", provider_payment_id: key, plan_id: p.id },
-        });
-        if (recErr) {
-          const { data: userData } = await supabase.auth.getUser();
-          const uid = userData?.user?.id;
-          if (uid) {
-            const { error: insErr } = await supabase
-              .from("payments")
-              .insert({ user_id: uid, amount: Number(p.price), currency: "BRL", status: "pending", provider: "pix", provider_payment_id: key });
-            if (insErr) toast.error(insErr.message || "Falha ao registrar fatura");
-            else {
-              // ensure a pending subscription exists so admin vê o plano
-              const { error: subErr } = await supabase
-                .from("user_subscriptions")
-                .insert({ user_id: uid, plan_id: p.id, status: "pending" });
-              if (subErr) {
-                console.warn("Falha ao criar assinatura pendente:", subErr.message);
-              }
-            }
-          } else {
-            toast.error(recErr.message || "Falha ao registrar fatura");
-          }
-        }
+        await generateAsaasPix(p.id, Number(p.price || 0), String(p.name || "Plano"));
         setErr("");
       } catch (e: any) {
         const m = e?.message || "Erro ao gerar PIX";
@@ -114,7 +82,7 @@ const PlanPaymentPix = () => {
   }, [pixCode]);
 
   useEffect(() => {
-    if (!paymentKey || !plan?.id) return;
+    if (!paymentKey || !(planIdState || plan?.id)) return;
     let stop = false;
     const subRealtime = async () => {
       const ch = supabase
@@ -132,7 +100,7 @@ const PlanPaymentPix = () => {
                   .from("user_subscriptions")
                   .update({ status: "active" })
                   .eq("user_id", uid)
-                  .eq("plan_id", plan.id);
+                  .eq("plan_id", planIdState || plan.id);
               }
               setStep(3);
               setModalOpen(true);
@@ -162,7 +130,7 @@ const PlanPaymentPix = () => {
               .from("user_subscriptions")
               .update({ status: "active" })
               .eq("user_id", uid)
-              .eq("plan_id", plan.id);
+              .eq("plan_id", planIdState || plan.id);
           }
           setStep(3);
           setModalOpen(true);
@@ -177,7 +145,7 @@ const PlanPaymentPix = () => {
     subRealtime();
     startPolling();
     return () => { stop = true; };
-  }, [paymentKey, plan?.id]);
+  }, [paymentKey, planIdState, plan?.id]);
 
   const payViaCheckout = async () => {
     try {
@@ -188,6 +156,58 @@ const PlanPaymentPix = () => {
       window.location.href = `https://wa.me/5561982152648?text=${text}`;
     } catch (e: any) {
       toast.error(e?.message || "Erro ao iniciar checkout");
+    }
+  };
+
+  const generateAsaasPix = async (targetPlanId?: string, priceCentsOverride?: number, planNameOverride?: string) => {
+    try {
+      const pid = targetPlanId || planIdState || plan?.id;
+      if (!pid) { toast.error("Plano inválido"); return; }
+      const cents = typeof priceCentsOverride === "number" ? priceCentsOverride : Number(plan?.price || 0);
+      const amount = Math.round(cents) / 100;
+      const providerId = `pix_${pid}_${Date.now()}`;
+      const code = generatePixCopyPaste({
+        key: STATIC_PIX_KEY,
+        merchantName: "CORTEFACIL",
+        merchantCity: "BRASILIA",
+        amount,
+        description: `Assinatura ${planNameOverride || plan?.name || "Plano"}`,
+      });
+      setPixImageBase64("");
+      setPixCode(code);
+      setPaymentKey(providerId);
+      setStep(2);
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const uid = userData?.user?.id;
+        if (uid) {
+          await supabase.from("payments").insert({ user_id: uid, amount: Number(plan?.price || 0), currency: "BRL", status: "pending", provider: "pix", provider_payment_id: providerId });
+          await supabase.from("user_subscriptions").insert({ user_id: uid, plan_id: pid, status: "pending", current_period_start: new Date().toISOString(), current_period_end: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
+        }
+      } catch (_) {}
+    } catch (e: any) {
+      const cents2 = typeof priceCentsOverride === "number" ? priceCentsOverride : Number(plan?.price || 0);
+      const amount = Math.round(cents2) / 100;
+      const providerId = `pix_${targetPlanId || planIdState || plan?.id}_${Date.now()}`;
+      const code = generatePixCopyPaste({
+        key: STATIC_PIX_KEY,
+        merchantName: "CORTEFACIL",
+        merchantCity: "BRASILIA",
+        amount,
+        description: `Assinatura ${planNameOverride || plan?.name || "Plano"}`,
+      });
+      setPixImageBase64("");
+      setPixCode(code);
+      setPaymentKey(providerId);
+      setStep(2);
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const uid = userData?.user?.id;
+        if (uid) {
+          await supabase.from("payments").insert({ user_id: uid, amount: Number(plan?.price || 0), currency: "BRL", status: "pending", provider: "pix", provider_payment_id: providerId });
+          await supabase.from("user_subscriptions").insert({ user_id: uid, plan_id: targetPlanId || planIdState || plan?.id, status: "pending", current_period_start: new Date().toISOString(), current_period_end: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
+        }
+      } catch (_) {}
     }
   };
 
@@ -224,11 +244,15 @@ const PlanPaymentPix = () => {
                 <div className="mt-3 text-sm">Tempo restante: {String(Math.floor(secondsLeft / 60)).padStart(2, "0")}:{String(secondsLeft % 60).padStart(2, "0")}</div>
               </div>
               <div className="flex flex-col items-center justify-center">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=224x224&data=${encodeURIComponent(pixCode)}`}
-                  alt="PIX QR Code"
-                  className="h-56 w-56 rounded border"
-                />
+                {pixImageBase64 ? (
+                  <img src={`data:image/png;base64,${pixImageBase64}`} alt="PIX QR Code" className="h-56 w-56 rounded border" />
+                ) : (
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=224x224&data=${encodeURIComponent(pixCode)}`}
+                    alt="PIX QR Code"
+                    className="h-56 w-56 rounded border"
+                  />
+                )}
                 <div className="mt-2 w-full break-words text-center text-xs text-muted-foreground">
                   {pixCode}
                 </div>
@@ -302,18 +326,19 @@ function crc16(payload: string) {
   return crc.toString(16).toUpperCase().padStart(4, "0");
 }
 
-function generatePixCopyPaste(opts: { key: string; merchantName: string; merchantCity: string; amount: number; description?: string }) {
+function generatePixCopyPaste(opts: { key: string; merchantName: string; merchantCity: string; amount?: number; description?: string }) {
   const gui = tag("00", "BR.GOV.BCB.PIX");
   const key = tag("01", opts.key);
   const desc = opts.description ? tag("02", opts.description) : "";
   const mai = tag("26", `${gui}${key}${desc}`);
   const addData = tag("62", tag("05", "CORTFACIL"));
+  const amt = typeof opts.amount === "number" && isFinite(opts.amount) ? tag("54", opts.amount.toFixed(2)) : "";
   const payloadNoCRC =
     tag("00", "01") + // Payload Format Indicator
     tag("01", "11") + // Point of Initiation Method: static
     tag("52", "0000") + // Merchant Category Code
     tag("53", "986") + // Currency: BRL
-    tag("54", opts.amount.toFixed(2)) + // Amount
+    amt + // Amount (optional)
     tag("58", "BR") + // Country Code
     tag("59", opts.merchantName) + // Merchant Name
     tag("60", opts.merchantCity) + // Merchant City
@@ -323,3 +348,4 @@ function generatePixCopyPaste(opts: { key: string; merchantName: string; merchan
   const checksum = crc16(full);
   return payloadNoCRC + tag("63", checksum);
 }
+  const STATIC_PIX_KEY = String((import.meta as any).env?.VITE_PIX_STATIC_KEY || "d66c563a-71b6-4e2b-9292-8c71d218eb31");
