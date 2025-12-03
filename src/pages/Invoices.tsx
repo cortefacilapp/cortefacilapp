@@ -14,6 +14,7 @@ type PlanRow = { name: string; price: number; interval: string | null; monthly_c
 const Invoices = () => {
   const [loading, setLoading] = useState(true);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [paidPayments, setPaidPayments] = useState<PaymentRow[]>([]);
   const [subscription, setSubscription] = useState<SubscriptionRow | null>(null);
   const [planName, setPlanName] = useState<string | null>(null);
   const [planPriceCents, setPlanPriceCents] = useState<number | null>(null);
@@ -55,8 +56,17 @@ const Invoices = () => {
         .select("id, amount, currency, status, created_at, provider, provider_payment_id")
         .eq("user_id", uid)
         .order("created_at", { ascending: false })
-        .limit(3);
+        .limit(6);
       setPayments(((pays || []) as PaymentRow[]));
+
+      const { data: paysPaid } = await supabase
+        .from("payments")
+        .select("id, amount, currency, status, created_at, provider, provider_payment_id")
+        .eq("user_id", uid)
+        .in("status", ["approved"]) 
+        .order("created_at", { ascending: false })
+        .limit(12);
+      setPaidPayments(((paysPaid || []) as PaymentRow[]));
       setLoading(false);
     };
     load();
@@ -280,6 +290,44 @@ const Invoices = () => {
               ))}
               {!payments.length && (
                 <div className="rounded-md border bg-muted/40 p-4 text-sm text-muted-foreground">Nenhuma fatura registrada</div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-6 border-2 hover:shadow-lg transition-shadow">
+          <CardHeader className="bg-primary/5 rounded-md">
+            <CardTitle>Faturas Pagas</CardTitle>
+            <CardDescription>Comprovantes e detalhes</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+              {paidPayments.map((p) => (
+                <div key={p.id} className="rounded-md border-2 bg-card p-4 text-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">{p.provider?.toUpperCase()}</div>
+                    <div className="text-xs text-muted-foreground">{p.provider_payment_id || "--"}</div>
+                  </div>
+                  <div className="mt-2">
+                    {(() => {
+                      try {
+                        const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((Number(p.amount) || 0) / 100);
+                        return <div className="font-semibold">{brl} <span className="text-xs text-muted-foreground">{p.currency}</span></div>;
+                      } catch {
+                        const v = (Number(p.amount) || 0) / 100;
+                        return <div className="font-semibold">R$ {v.toFixed(2).replace('.', ',')} <span className="text-xs text-muted-foreground">{p.currency}</span></div>;
+                      }
+                    })()}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between">
+                    <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-green-100 text-green-700">paga</span>
+                    <span className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span>
+                  </div>
+                  <Button variant="outline" className="mt-3 w-full" onClick={() => sendWhatsapp(p)}>Enviar comprovante via WhatsApp</Button>
+                </div>
+              ))}
+              {!paidPayments.length && (
+                <div className="rounded-md border bg-muted/40 p-4 text-sm text-muted-foreground">Nenhuma fatura paga ainda</div>
               )}
             </div>
           </CardContent>
