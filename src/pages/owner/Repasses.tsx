@@ -7,9 +7,27 @@ import { Loader2, Wallet, CalendarDays, ArrowDownCircle } from "lucide-react";
 
 const Repasses = () => {
   const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState<any[]>([]);
-  const [withdraws, setWithdraws] = useState<any[]>([]);
-  const [selected, setSelected] = useState<any | null>(null);
+  type Payout = {
+    id: string;
+    amount: number;
+    status: string;
+    paid_at?: string | null;
+    period_start?: string | null;
+    period_end?: string | null;
+  };
+  type WithdrawRequest = {
+    id: string;
+    amount: number;
+    status: string;
+    pix_key: string;
+    created_at?: string | null;
+    approved_at?: string | null;
+    paid_at?: string | null;
+    rejected_at?: string | null;
+  };
+  const [items, setItems] = useState<Payout[]>([]);
+  const [withdraws, setWithdraws] = useState<WithdrawRequest[]>([]);
+  const [selected, setSelected] = useState<Payout | null>(null);
   const [exporting, setExporting] = useState(false);
   const [salonId, setSalonId] = useState<string | null>(null);
   const formatDateBR = (d: Date | null) => (d ? new Intl.DateTimeFormat("pt-BR").format(d) : "");
@@ -88,13 +106,17 @@ const Repasses = () => {
             const now = new Date();
             const cs = new Date(now.getFullYear(), now.getMonth(), 1);
             const ce = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-            const pending = (items || []).filter((p) => {
-              const st = String(p.status || "").toLowerCase();
-              const ps = (p as any).period_start ? new Date((p as any).period_start) : null;
-              const pe = (p as any).period_end ? new Date((p as any).period_end) : null;
-              return st === "pending" && ps && pe && ps >= cs && pe <= ce;
-            }).reduce((acc, p) => acc + Number((p as any).amount || 0), 0);
-            const paid = (items || []).filter((p) => String(p.status || "").toLowerCase() === "paid").reduce((acc, p) => acc + Number((p as any).amount || 0), 0);
+            const pending = (items || [])
+              .filter((p) => {
+                const st = String(p.status || "").toLowerCase();
+                const ps = p.period_start ? new Date(p.period_start) : null;
+                const pe = p.period_end ? new Date(p.period_end) : null;
+                return st === "pending" && ps && pe && ps >= cs && pe <= ce;
+              })
+              .reduce((acc, p) => acc + Number(p.amount || 0), 0);
+            const paid = (items || [])
+              .filter((p) => String(p.status || "").toLowerCase() === "paid")
+              .reduce((acc, p) => acc + Number(p.amount || 0), 0);
             return (
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="rounded-xl border p-4 bg-muted/40 flex items-center justify-between">

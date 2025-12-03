@@ -71,15 +71,42 @@ const SalonSignup = () => {
         .from("profiles")
         .upsert({ id: ownerId, email, name: ownerName, role: "salon_owner" });
 
-      const { error } = await supabase.from("salons").insert({
-        owner_id: ownerId,
-        name: tradeName || ownerName || "Salão",
-        status: "pending",
-        state,
-        city,
-        postal_code: cep || null,
-        address: `${street}, ${number} - ${city}/${state} - CEP ${cep}`,
-      });
+      // Tenta inserir documento (CPF/CNPJ) se a coluna existir; caso contrário, faz fallback sem o campo
+      let insertErr: Error | null = null;
+      try {
+        const { error } = await supabase.from("salons").insert({
+          owner_id: ownerId,
+          name: tradeName || ownerName || "Salão",
+          status: "pending",
+          state,
+          city,
+          postal_code: cep || null,
+          address: `${street}, ${number} - ${city}/${state} - CEP ${cep}`,
+          // coluna opcional no banco
+          doc,
+        });
+        if (error) insertErr = new Error(error.message);
+      } catch (e) {
+        insertErr = e as Error;
+      }
+      if (insertErr) {
+        const msg = String(insertErr.message || "");
+        const missingDocColumn = msg.toLowerCase().includes("column \"doc\"") || msg.toLowerCase().includes("unknown column") || msg.toLowerCase().includes("does not exist");
+        if (missingDocColumn) {
+          const { error: fallbackErr } = await supabase.from("salons").insert({
+            owner_id: ownerId,
+            name: tradeName || ownerName || "Salão",
+            status: "pending",
+            state,
+            city,
+            postal_code: cep || null,
+            address: `${street}, ${number} - ${city}/${state} - CEP ${cep}`,
+          });
+          if (fallbackErr) throw fallbackErr;
+        } else {
+          throw insertErr;
+        }
+      }
 
       if (error) throw error;
       toast.success("Cadastro enviado!");

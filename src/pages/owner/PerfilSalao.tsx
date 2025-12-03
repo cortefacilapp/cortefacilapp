@@ -6,11 +6,27 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import type { Tables } from "@/integrations/supabase/types";
 
 const PerfilSalao = () => {
   const [loading, setLoading] = useState(true);
-  const [salon, setSalon] = useState<any | null>(null);
-  const [form, setForm] = useState<any>({});
+  type SalonRow = Tables<"salons">;
+  type SalonRowExt = SalonRow & { doc?: string | null };
+  type ProfileRow = Tables<"profiles">;
+  type SalonForm = {
+    name: string;
+    phone: string | null;
+    description: string | null;
+    state: string;
+    city: string;
+    postal_code: string | null;
+    address: string;
+    doc: string | null;
+  };
+  const [salon, setSalon] = useState<SalonRow | null>(null);
+  const [form, setForm] = useState<SalonForm>({ name: "", phone: null, description: null, state: "", city: "", postal_code: null, address: "", doc: null });
+  const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [ownerFullName, setOwnerFullName] = useState<string>("");
 
   useEffect(() => {
     const load = async () => {
@@ -18,9 +34,33 @@ const PerfilSalao = () => {
       const { data: userData } = await supabase.auth.getUser();
       const uid = userData?.user?.id;
       if (!uid) { setLoading(false); return; }
+      setOwnerId(uid);
       const { data } = await supabase.from("salons").select("*").eq("owner_id", uid).maybeSingle();
-      setSalon(data || null);
-      setForm(data || {});
+      setSalon((data as SalonRow | null) || null);
+      if (data) {
+        const s = data as SalonRow;
+        const sExt = s as unknown as SalonRowExt;
+        setForm({
+          name: s.name || "",
+          phone: s.phone ?? null,
+          description: s.description ?? null,
+          state: s.state || "",
+          city: s.city || "",
+          postal_code: s.postal_code ?? null,
+          address: s.address || "",
+          doc: sExt.doc ?? null,
+        });
+      } else {
+        setForm({ name: "", phone: null, description: null, state: "", city: "", postal_code: null, address: "", doc: null });
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name,name")
+        .eq("id", uid)
+        .maybeSingle();
+      const pr = (profile as (ProfileRow & { name?: string | null }) | null);
+      setOwnerFullName(pr?.full_name || pr?.name || "");
       setLoading(false);
     };
     load();
@@ -28,20 +68,26 @@ const PerfilSalao = () => {
 
   const update = async () => {
     if (!salon?.id) return;
-    const { error } = await supabase.from("salons").update({
-      name: form.name,
-      doc: form.doc,
-      state: form.state,
-      city: form.city,
-      cep: form.cep,
-      street: form.street,
-      number: form.number,
-      address: form.address,
-      phone: form.phone,
-      trade_name: form.trade_name,
-      opening_hours: form.opening_hours,
-    }).eq("id", salon.id);
+    const { error } = await supabase
+      .from("salons")
+      .update({
+        name: form.name,
+        phone: form.phone,
+        description: form.description,
+        state: form.state,
+        city: form.city,
+        postal_code: form.postal_code,
+        address: form.address,
+      })
+      .eq("id", salon.id);
     if (error) { toast.error("Erro ao salvar"); return; }
+    if (ownerId) {
+      const { error: profErr } = await supabase
+        .from("profiles")
+        .update({ full_name: ownerFullName, name: ownerFullName } as any)
+        .eq("id", ownerId);
+      if (profErr) { toast.error("Erro ao salvar nome completo"); return; }
+    }
     toast.success("Perfil atualizado");
   };
 
@@ -62,24 +108,51 @@ const PerfilSalao = () => {
         {!salon && <div className="text-sm text-muted-foreground">Nenhum salão cadastrado</div>}
         {salon && (
           <div className="grid gap-4 md:grid-cols-2">
-            {[
-              { key: "name", label: "Nome" },
-              { key: "trade_name", label: "Nome fantasia" },
-              { key: "doc", label: "CNPJ/CPF" },
-              { key: "phone", label: "Telefone" },
-              { key: "opening_hours", label: "Horário" },
-              { key: "state", label: "Estado" },
-              { key: "city", label: "Cidade" },
-              { key: "cep", label: "CEP" },
-              { key: "street", label: "Rua" },
-              { key: "number", label: "Número" },
-              { key: "address", label: "Endereço completo" },
-            ].map((f) => (
-              <div key={f.key} className="space-y-2 md:col-span-1">
-                <Label htmlFor={f.key}>{f.label}</Label>
-                <Input id={f.key} value={form[f.key] || ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />
-              </div>
-            ))}
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="doc">CPF/CNPJ</Label>
+              <Input id="doc" value={form.doc || ""} readOnly disabled />
+              {!form.doc && <div className="text-xs text-muted-foreground">Em branco</div>}
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="owner_full_name">Nome completo (Dono)</Label>
+              <Input id="owner_full_name" value={ownerFullName} onChange={(e) => setOwnerFullName(e.target.value)} />
+              {!ownerFullName && <div className="text-xs text-muted-foreground">Em branco</div>}
+            </div>
+            <div className="space-y-2 md:col-span-1">
+              <Label htmlFor="name">Nome Fantasia</Label>
+              <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              {!form.name && <div className="text-xs text-muted-foreground">Em branco</div>}
+            </div>
+            <div className="space-y-2 md:col-span-1">
+              <Label htmlFor="phone">Telefone / WhatsApp</Label>
+              <Input id="phone" value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              {!form.phone && <div className="text-xs text-muted-foreground">Em branco</div>}
+            </div>
+            <div className="space-y-2 md:col-span-1">
+              <Label htmlFor="state">Estado</Label>
+              <Input id="state" value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
+              {!form.state && <div className="text-xs text-muted-foreground">Em branco</div>}
+            </div>
+            <div className="space-y-2 md:col-span-1">
+              <Label htmlFor="city">Cidade</Label>
+              <Input id="city" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+              {!form.city && <div className="text-xs text-muted-foreground">Em branco</div>}
+            </div>
+            <div className="space-y-2 md:col-span-1">
+              <Label htmlFor="postal_code">CEP</Label>
+              <Input id="postal_code" value={form.postal_code || ""} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} />
+              {!form.postal_code && <div className="text-xs text-muted-foreground">Em branco</div>}
+            </div>
+            <div className="space-y-2 md:col-span-1">
+              <Label htmlFor="address">Endereço</Label>
+              <Input id="address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+              {!form.address && <div className="text-xs text-muted-foreground">Em branco</div>}
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="description">Descrição</Label>
+              <Input id="description" value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              {!form.description && <div className="text-xs text-muted-foreground">Em branco</div>}
+            </div>
             <div className="md:col-span-2">
               <Button className="mt-2" onClick={update}>Salvar</Button>
             </div>
@@ -91,4 +164,3 @@ const PerfilSalao = () => {
 };
 
 export default PerfilSalao;
-

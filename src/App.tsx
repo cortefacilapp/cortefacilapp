@@ -27,6 +27,7 @@ import SalonsBrowse from "./pages/SalonsBrowse";
 import Invoices from "./pages/Invoices";
 import PlanPaymentPix from "./pages/PlanPaymentPix";
 import ValidarCodigo from "./pages/owner/ValidarCodigo";
+import PartnerPitch from "./pages/PartnerPitch";
 
 const queryClient = new QueryClient();
 
@@ -63,6 +64,7 @@ const App = () => (
           <Route path="/planos/pagar/:planId" element={<PlanPaymentPix />} />
           <Route path="/planos/pagar" element={<PlanPaymentPix />} />
           <Route path="/saloes" element={<SalonsBrowse />} />
+          <Route path="/parceiros/saiba-mais" element={<PartnerPitch />} />
           <Route path="/faturas" element={<Invoices />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

@@ -190,9 +190,12 @@ const Landing = () => {
               </div>
             </div>
 
-            <div className="mt-8 flex justify-center">
-              <Button asChild size="lg" className="w-full max-w-sm">
+            <div className="mt-8 flex justify-center gap-3">
+              <Button asChild size="lg" className="px-8">
                 <Link to="/signup/salao">Cadastrar Salão</Link>
+              </Button>
+              <Button asChild size="lg" variant="outline" className="px-8">
+                <Link to="/parceiros/saiba-mais">Saiba mais</Link>
               </Button>
             </div>
           </CardContent>
