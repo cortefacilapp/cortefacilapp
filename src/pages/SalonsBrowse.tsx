@@ -1,12 +1,51 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { MapPin, Star, Scissors, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 const SalonsBrowse = () => {
   const [query, setQuery] = useState("");
+  const [backTo, setBackTo] = useState<string>("/");
+  type SalonItem = { id: string; nome: string; endereco: string; avaliacao: number; imagem?: string | null };
+  type SalonRow = { id: string; name?: string | null; city?: string | null; state?: string | null; address?: string | null; status?: string | null; approved_at?: string | null };
+  const [dbSalons, setDbSalons] = useState<SalonItem[]>([]);
+  useEffect(() => {
+    const decideBack = async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const uid = userData?.user?.id || null;
+        if (!uid) { setBackTo("/"); return; }
+        setBackTo("/dashboard");
+      } catch {
+        setBackTo("/");
+      }
+    };
+    decideBack();
+  }, []);
+
+  useEffect(() => {
+    const loadDbSalons = async () => {
+      try {
+        const res = await supabase
+          .from("salons")
+          .select("id,name,city,state,address,status,approved_at")
+          .eq("status", "approved")
+          .order("approved_at", { ascending: false });
+        const rows = (res.data || []) as SalonRow[];
+        const mapped: SalonItem[] = rows.map((s) => {
+          const addr = [s.address || "", s.city && s.state ? `${s.city}/${s.state}` : s.city || s.state || ""].filter(Boolean).join(" - ");
+          return { id: String(s.id), nome: String(s.name || "Salão"), endereco: addr, avaliacao: 4.7, imagem: null };
+        });
+        setDbSalons(mapped);
+      } catch {
+        setDbSalons([]);
+      }
+    };
+    loadDbSalons();
+  }, []);
   const saloesFakes = useMemo(
     () => [
       { id: "1", nome: "Studio Elegance", endereco: "Rua das Flores, 102 - Centro", avaliacao: 4.8, imagem: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438" },
@@ -28,7 +67,15 @@ const SalonsBrowse = () => {
     []
   );
 
-  const filtered = saloesFakes.filter((s) => {
+  const filteredDb = dbSalons.filter((s) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (s.nome || "").toLowerCase().includes(q) ||
+      (s.endereco || "").toLowerCase().includes(q)
+    );
+  });
+  const filteredFake = saloesFakes.filter((s) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -50,17 +97,62 @@ const SalonsBrowse = () => {
           </div>
           <div className="mt-6 flex justify-center">
             <Button asChild variant="outline" className="border-white text-[#1A73E8] hover:bg-white/10">
-              <Link to="/">Voltar ao início</Link>
+              <Link to={backTo}>Voltar</Link>
             </Button>
           </div>
         </div>
       </section>
       <main className="container mx-auto px-4 py-12">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((s) => (
+          {filteredDb.map((s) => (
             <Card key={s.id} className="overflow-hidden rounded-xl border-2 shadow-sm transition hover:scale-[1.02] hover:shadow-lg">
               <div className="relative h-40 w-full">
-                {!failed[s.id] ? (
+                {s.imagem && !failed[s.id] ? (
+                  <img
+                    src={`${s.imagem}?auto=format&fit=crop&w=800&q=60`}
+                    alt={s.nome}
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                    onError={() => setFailed((prev) => ({ ...prev, [s.id]: true }))}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#0A1A2F] to-[#1A73E8] text-white">
+                    <span className="text-lg font-semibold">{s.nome.split(" ")[0]}</span>
+                  </div>
+                )}
+              </div>
+              <CardHeader>
+                <CardTitle className="text-xl">{s.nome}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <MapPin className="h-4 w-4" />
+                  <span>{s.endereco}</span>
+                </div>
+                <div className="mt-3 flex items-center gap-1">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star key={i} className={`h-4 w-4 ${i < Math.round(s.avaliacao) ? "text-yellow-500" : "text-gray-300"}`} fill={i < Math.round(s.avaliacao) ? "currentColor" : "none"} />
+                  ))}
+                  <span className="ml-2 text-xs text-muted-foreground">{s.avaliacao.toFixed(1)}</span>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#1A73E8]/10 px-3 py-1 text-xs text-[#1A73E8]"><Scissors className="h-3 w-3" />Corte masculino</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#1A73E8]/10 px-3 py-1 text-xs text-[#1A73E8]">Corte feminino</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#1A73E8]/10 px-3 py-1 text-xs text-[#1A73E8]">Barbearia & estética</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs text-emerald-700"><Clock className="h-3 w-3" />Aberto agora</span>
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <Button asChild className="bg-[#1A73E8] hover:bg-[#1668d6] text-white">
+                    <Link to="#">Ver Perfil</Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {filteredFake.map((s) => (
+            <Card key={s.id} className="overflow-hidden rounded-xl border-2 shadow-sm transition hover:scale-[1.02] hover:shadow-lg">
+              <div className="relative h-40 w-full">
+                {s.imagem && !failed[s.id] ? (
                   <img
                     src={`${s.imagem}?auto=format&fit=crop&w=800&q=60`}
                     alt={s.nome}
@@ -103,7 +195,7 @@ const SalonsBrowse = () => {
             </Card>
           ))}
         </div>
-        {!filtered.length && (
+        {!filteredDb.length && !filteredFake.length && (
           <div className="mt-8 text-center text-sm text-muted-foreground">Nenhum salão encontrado</div>
         )}
       </main>

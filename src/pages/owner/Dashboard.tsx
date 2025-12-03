@@ -573,47 +573,75 @@ const OwnerDashboardPage = () => {
 
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-      <Card>
-        <CardHeader>
+      <Card className="border-2 hover:shadow-lg transition-shadow">
+        <CardHeader className="bg-primary/5 rounded-md">
           <CardTitle>Salão</CardTitle>
-          <CardDescription>{salon?.status || "--"}</CardDescription>
+          <CardDescription>
+            {(() => {
+              const st = String(salon?.status || "--").toLowerCase();
+              const cls = ["active", "approved"].includes(st)
+                ? "bg-green-100 text-green-700"
+                : st === "pending"
+                ? "bg-amber-100 text-amber-700"
+                : "bg-gray-100 text-gray-700";
+              return <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${cls}`}>{salon?.status || "--"}</span>;
+            })()}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-xl font-bold">{salon?.name || "--"}</p>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
+      <Card className="border-2 hover:shadow-lg transition-shadow">
+        <CardHeader className="bg-primary/5 rounded-md">
           <CardTitle>Total de validações (mês)</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">{validationsCount} validações aceitas</p>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
+      <Card className="border-2 hover:shadow-lg transition-shadow">
+        <CardHeader className="bg-primary/5 rounded-md">
           <CardTitle>Seu saldo (80%)</CardTitle>
           <CardDescription>Após taxa da plataforma</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold">R$ {totals.salonShare.toFixed(2)}</p>
+          <p className="text-3xl font-bold">
+            {(() => {
+              try {
+                return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(totals.salonShare || 0));
+              } catch {
+                const v = Number(totals.salonShare || 0);
+                return `R$ ${v.toFixed(2).replace('.', ',')}`;
+              }
+            })()}
+          </p>
         </CardContent>
       </Card>
-      <Card className="md:col-span-3">
-        <CardHeader>
+      <Card className="md:col-span-3 border-2 hover:shadow-lg transition-shadow">
+        <CardHeader className="bg-primary/5 rounded-md">
           <CardTitle>Repasses</CardTitle>
           <CardDescription>Recebidos e pendentes</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3 mb-4">
-            <div className="rounded-xl border p-4 bg-muted/40 flex items-center justify-between">
+            <div className="rounded-xl border-2 p-4 bg-muted/40 flex items-center justify-between hover:shadow-md transition-shadow">
               <div>
                 <div className="text-xs text-muted-foreground">Disponível</div>
-                <div className="text-2xl font-bold">R$ {availableWithdraw.toFixed(2)}</div>
+                <div className="text-2xl font-bold">
+                  {(() => {
+                    try {
+                      return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(availableWithdraw || 0));
+                    } catch {
+                      const v = Number(availableWithdraw || 0);
+                      return `R$ ${v.toFixed(2).replace('.', ',')}`;
+                    }
+                  })()}
+                </div>
               </div>
               <Wallet className="h-6 w-6 text-primary" />
             </div>
-            <div className="rounded-xl border p-4 bg-muted/40 flex items-center justify-between md:col-span-2">
+            <div className="rounded-xl border-2 p-4 bg-muted/40 flex items-center justify-between md:col-span-2 hover:shadow-md transition-shadow">
               <div>
                 <div className="text-xs text-muted-foreground">Janela de saque</div>
                 <div className="text-sm font-medium flex items-center gap-2"><CalendarDays className="h-4 w-4" />{formatDateBR(withdrawWindow.start)} — {formatDateBR(withdrawWindow.end)}</div>
@@ -629,7 +657,17 @@ const OwnerDashboardPage = () => {
               <div className="text-xs text-muted-foreground mb-1">Digite o valor do saque em reais (BRL)</div>
               <Input placeholder="Valor do saque (BRL)" type="text" value={withdrawAmount} onChange={(e) => setWithdrawAmount(formatBRLInput(e.target.value))} />
             </div>
-            <div className="md:col-span-3 text-sm text-muted-foreground">Disponível para saque: R$ {availableWithdraw.toFixed(2)}</div>
+            <div className="md:col-span-3 text-sm text-muted-foreground">
+              {(() => {
+                try {
+                  const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(availableWithdraw || 0));
+                  return `Disponível para saque: ${brl}`;
+                } catch {
+                  const v = Number(availableWithdraw || 0);
+                  return `Disponível para saque: R$ ${v.toFixed(2).replace('.', ',')}`;
+                }
+              })()}
+            </div>
             <div className="md:col-span-1">
               <Button className="w-full" disabled={requesting || !salon?.id || availableWithdraw <= 0 || !pixKey.trim() || withdrawAmtNum <= 0 || withdrawAmtNum > availableWithdraw} onClick={async () => {
                 if (!salon?.id) return;
@@ -650,15 +688,15 @@ const OwnerDashboardPage = () => {
         </CardContent>
       </Card>
 
-      <Card className="md:col-span-3">
-        <CardHeader>
+      <Card className="md:col-span-3 border-2 hover:shadow-lg transition-shadow">
+        <CardHeader className="bg-primary/5 rounded-md">
           <CardTitle>Afiliados do salão (ciclo atual)</CardTitle>
           <CardDescription>Usuários comuns afiliados a este salão</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {affiliates.map((u) => (
-                <div key={u.user_id || u.id} className="rounded border p-3">
+                <div key={u.user_id || u.id} className="rounded-md border-2 bg-card p-4 hover:shadow-md transition-shadow">
                   <div className="font-medium">{displayNameFor(u)}</div>
                   <div className="text-sm text-muted-foreground">Afiliado em: {u.affiliated_at ? new Date(u.affiliated_at).toLocaleDateString() : "--"}</div>
                   <div className="text-sm">Validações no ciclo atual: {u.used_count}</div>

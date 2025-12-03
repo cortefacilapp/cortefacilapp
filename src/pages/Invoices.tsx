@@ -16,6 +16,8 @@ const Invoices = () => {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [subscription, setSubscription] = useState<SubscriptionRow | null>(null);
   const [planName, setPlanName] = useState<string | null>(null);
+  const [planPriceCents, setPlanPriceCents] = useState<number | null>(null);
+  const [planInterval, setPlanInterval] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -40,8 +42,12 @@ const Invoices = () => {
           .maybeSingle();
         const pr = (plan as PlanRow | null);
         setPlanName(pr?.name || null);
+        setPlanPriceCents(typeof pr?.price === "number" ? pr?.price : null);
+        setPlanInterval(pr?.interval || null);
       } else {
         setPlanName(null);
+        setPlanPriceCents(null);
+        setPlanInterval(null);
       }
       const { data: pays } = await supabase
         .from("payments")
@@ -78,9 +84,13 @@ const Invoices = () => {
                   .then(({ data }) => {
                     const pr = (data as PlanRow | null);
                     setPlanName(pr?.name || null);
+                    setPlanPriceCents(typeof pr?.price === "number" ? pr?.price : null);
+                    setPlanInterval(pr?.interval || null);
                   });
               } else {
                 setPlanName(null);
+                setPlanPriceCents(null);
+                setPlanInterval(null);
               }
             }
           },
@@ -101,9 +111,13 @@ const Invoices = () => {
                   .then(({ data }) => {
                     const pr = (data as PlanRow | null);
                     setPlanName(pr?.name || null);
+                    setPlanPriceCents(typeof pr?.price === "number" ? pr?.price : null);
+                    setPlanInterval(pr?.interval || null);
                   });
               } else {
                 setPlanName(null);
+                setPlanPriceCents(null);
+                setPlanInterval(null);
               }
             }
           },
@@ -174,7 +188,23 @@ const Invoices = () => {
         <Card className="mb-6 border-2 hover:shadow-lg transition-shadow">
           <CardHeader className="bg-primary/5 rounded-md">
             <CardTitle>Assinatura</CardTitle>
-            {planName && <CardDescription>Plano: {planName}</CardDescription>}
+            {planName && (
+              <CardDescription>
+                {(() => {
+                  const intervalLabel = planInterval === "year" ? "ano" : "mês";
+                  if (typeof planPriceCents === "number") {
+                    try {
+                      const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((Number(planPriceCents) || 0) / 100);
+                      return `Plano: ${planName} • Valor: ${brl}/${intervalLabel}`;
+                    } catch {
+                      const v = (Number(planPriceCents) || 0) / 100;
+                      return `Plano: ${planName} • Valor: R$ ${v.toFixed(2).replace('.', ',')}/${intervalLabel}`;
+                    }
+                  }
+                  return `Plano: ${planName}`;
+                })()}
+              </CardDescription>
+            )}
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">

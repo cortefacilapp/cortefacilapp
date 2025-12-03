@@ -40,13 +40,26 @@ const ValidarCodigo = () => {
           const nowIso = new Date().toISOString();
           const { data: codes } = await supabase
             .from("codes")
-            .select("code,status,expires_at")
+            .select("code,status,expires_at,user_id")
             .eq("status", "generated")
             .gte("expires_at", nowIso)
             .in("user_id", uids)
             .order("expires_at", { ascending: false })
             .limit(10);
-          setRecentCodes(codes || []);
+          const idsRecent = (codes || []).map((r: any) => r.user_id).filter(Boolean);
+          let contacts: any[] = [];
+          if (idsRecent.length) {
+            const { data: c } = await supabase.rpc("user_contacts_for_users", { p_ids: idsRecent });
+            contacts = c || [];
+          }
+          const nameById = new Map<string, string>();
+          contacts.forEach((n: any) => {
+            if (n && n.user_id) {
+              nameById.set(String(n.user_id), String(n.full_name || ""));
+            }
+          });
+          const enriched = (codes || []).map((r: any) => ({ ...r, full_name: nameById.get(String(r.user_id)) || "" }));
+          setRecentCodes(enriched);
         }
       }
     };
@@ -172,12 +185,12 @@ const ValidarCodigo = () => {
         </form>
         {!!recentCodes.length && (
           <div className="mt-6">
-            <div className="text-sm font-medium mb-2">Códigos recentes de afiliados</div>
+            <div className="text-sm font-medium mb-2">Códigos recentes (ocultados por segurança)</div>
             <div className="grid gap-2 md:grid-cols-2">
               {recentCodes.map((c, idx) => (
                 <div key={idx} className="rounded border p-2 text-sm flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <div className="font-mono">{c.code}</div>
+                    <div className="font-medium">{String((c as any).full_name || "Usuário")}</div>
                     <div className="text-xs">{String(c.status)}</div>
                   </div>
                   <div className="text-xs text-right">
