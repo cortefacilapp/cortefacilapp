@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { MapPin, Star, Scissors, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const SalonsBrowse = () => {
   const [query, setQuery] = useState("");
@@ -12,6 +13,9 @@ const SalonsBrowse = () => {
   type SalonItem = { id: string; nome: string; endereco: string; avaliacao: number; imagem?: string | null };
   type SalonRow = { id: string; name?: string | null; city?: string | null; state?: string | null; address?: string | null; status?: string | null; approved_at?: string | null };
   const [dbSalons, setDbSalons] = useState<SalonItem[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [affiliatedSalonId, setAffiliatedSalonId] = useState<string | null>(null);
+  const [affiliating, setAffiliating] = useState<string | null>(null);
   useEffect(() => {
     const decideBack = async () => {
       try {
@@ -19,6 +23,15 @@ const SalonsBrowse = () => {
         const uid = userData?.user?.id || null;
         if (!uid) { setBackTo("/"); return; }
         setBackTo("/dashboard");
+        setUserId(uid);
+        const { data: aff } = await supabase
+          .from("user_affiliations")
+          .select("salon_id")
+          .eq("user_id", uid)
+          .maybeSingle();
+        type AffRow = { salon_id?: string | null };
+        const ar = aff as AffRow | null;
+        setAffiliatedSalonId(ar?.salon_id || null);
       } catch {
         setBackTo("/");
       }
@@ -46,6 +59,26 @@ const SalonsBrowse = () => {
     };
     loadDbSalons();
   }, []);
+
+  const handleAffiliate = async (salonId: string) => {
+    if (!userId) { toast.error("Faça login"); return; }
+    if (affiliatedSalonId) { toast.error("Você já está afiliado a um salão"); return; }
+    try {
+      setAffiliating(salonId);
+      const nowIso = new Date().toISOString();
+      const { error } = await supabase
+        .from("user_affiliations")
+        .insert({ user_id: userId, salon_id: salonId, affiliated_at: nowIso });
+      if (error) throw error;
+      setAffiliatedSalonId(salonId);
+      toast.success("Afiliado com sucesso");
+    } catch (err: unknown) {
+      const msg = typeof err === "object" && err && "message" in err ? String((err as { message?: unknown }).message) : "Falha ao afiliar";
+      toast.error(msg);
+    } finally {
+      setAffiliating(null);
+    }
+  };
   const saloesFakes = useMemo(
     () => [
       { id: "1", nome: "Studio Elegance", endereco: "Rua das Flores, 102 - Centro", avaliacao: 4.8, imagem: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438" },
@@ -103,9 +136,31 @@ const SalonsBrowse = () => {
         </div>
       </section>
       <main className="container mx-auto px-4 py-12">
+        {affiliatedSalonId && (
+          (() => {
+            const aff = dbSalons.find((x) => x.id === affiliatedSalonId);
+            if (!aff) return null;
+            return (
+              <Card className="mb-8 border-2 ring-2 ring-emerald-400">
+                <CardHeader className="bg-emerald-50 rounded-md">
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Seu salão afiliado</span>
+                    <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">Afiliado</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-semibold">{aff.nome}</span>
+                    <span className="text-muted-foreground">• {aff.endereco}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()
+        )}
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filteredDb.map((s) => (
-            <Card key={s.id} className="overflow-hidden rounded-xl border-2 shadow-sm transition hover:scale-[1.02] hover:shadow-lg">
+            <Card key={s.id} className={`overflow-hidden rounded-xl border-2 shadow-sm transition hover:scale-[1.02] hover:shadow-lg ${affiliatedSalonId === s.id ? "border-emerald-500 ring-2 ring-emerald-400" : ""}`}>
               <div className="relative h-40 w-full">
                 {s.imagem && !failed[s.id] ? (
                   <img
@@ -122,7 +177,12 @@ const SalonsBrowse = () => {
                 )}
               </div>
               <CardHeader>
-                <CardTitle className="text-xl">{s.nome}</CardTitle>
+                <CardTitle className="text-xl flex items-center justify-between">
+                  <span>{s.nome}</span>
+                  {affiliatedSalonId === s.id && (
+                    <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">Afiliado</span>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -141,7 +201,12 @@ const SalonsBrowse = () => {
                   <span className="inline-flex items-center gap-1 rounded-full bg-[#1A73E8]/10 px-3 py-1 text-xs text-[#1A73E8]">Barbearia & estética</span>
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs text-emerald-700"><Clock className="h-3 w-3" />Aberto agora</span>
                 </div>
-                <div className="mt-6 flex justify-end">
+                <div className="mt-6 flex flex-wrap gap-2 justify-end">
+                  {!!userId && !affiliatedSalonId && (
+                    <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" disabled={affiliating === s.id} onClick={() => handleAffiliate(s.id)}>
+                      {affiliating === s.id ? "Afiliação..." : "Afiliar-se"}
+                    </Button>
+                  )}
                   <Button asChild className="bg-[#1A73E8] hover:bg-[#1668d6] text-white">
                     <Link to="#">Ver Perfil</Link>
                   </Button>
