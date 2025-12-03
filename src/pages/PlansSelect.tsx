@@ -99,7 +99,7 @@ const PlansSelect = () => {
   };
 
   return (
-    <div>
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-background">
       <header className="fixed inset-x-0 top-0 z-50 border-b bg-card">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div className="flex items-center gap-2">
@@ -122,8 +122,8 @@ const PlansSelect = () => {
         </div>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {plans.map((p) => (
-            <Card key={p.id} className={`border-2 ${p.name === "Popular" ? "border-primary" : ""}`}>
-              <CardHeader>
+            <Card key={p.id} className={`border-2 ${p.name === "Popular" ? "border-primary" : ""} hover:shadow-lg transition-shadow`}>
+              <CardHeader className="bg-primary/5 rounded-md">
                 <CardTitle>{p.name}</CardTitle>
                 <CardDescription>
                   R$ {(Number(p.price) / 100).toFixed(2)}/{p.interval === "year" ? "ano" : "mês"}
@@ -133,6 +133,19 @@ const PlansSelect = () => {
                 <div className="space-y-2">
                   <p className="text-sm">Cortes mensais: {p.monthly_credits}</p>
                   {p.description && <p className="text-sm text-muted-foreground">{p.description}</p>}
+                  {(() => {
+                    const n = p.name;
+                    const note = n === "Social"
+                      ? "Observação: corte simples degradê"
+                      : n === "Popular"
+                      ? "Observação: corte simples + sobrancelhas"
+                      : n === "Premium"
+                      ? "Observação: corte profissional + sobrancelha + barba"
+                      : "";
+                    return note ? (
+                      <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{note}</div>
+                    ) : null;
+                  })()}
                   <div className="space-y-1 pt-2">
                     {(p.features || [
                       `Até ${p.monthly_credits} cortes/mês`,

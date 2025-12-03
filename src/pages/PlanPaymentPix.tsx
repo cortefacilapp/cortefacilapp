@@ -232,27 +232,42 @@ const PlanPaymentPix = () => {
       </header>
 
       <main className="container mx-auto px-4 py-8 pt-20">
-        <Card>
-          <CardHeader>
+        <Card className="border-2 hover:shadow-lg transition-shadow">
+          <CardHeader className="bg-primary/5 rounded-md">
             <CardTitle>{plan?.name} • R$ {(Number(plan?.price) / 100).toFixed(2)} / {plan?.interval === "year" ? "ano" : "mês"}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-6 md:grid-cols-2">
               <div>
                 <div className="text-sm text-muted-foreground">Cortes mensais: {plan?.monthly_credits}</div>
+                {(() => {
+                  const n = String(plan?.name || "");
+                  const note = n === "Social"
+                    ? "Observação: corte simples degradê"
+                    : n === "Popular"
+                    ? "Observação: corte simples + sobrancelhas"
+                    : n === "Premium"
+                    ? "Observação: corte profissional + sobrancelha + barba"
+                    : "";
+                  return note ? (
+                    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{note}</div>
+                  ) : null;
+                })()}
                 <div className="mt-2 text-sm">Use o QR Code ao lado para pagar sua assinatura.</div>
                 <div className="mt-3 text-sm">Tempo restante: {String(Math.floor(secondsLeft / 60)).padStart(2, "0")}:{String(secondsLeft % 60).padStart(2, "0")}</div>
               </div>
               <div className="flex flex-col items-center justify-center">
-                {pixImageBase64 ? (
-                  <img src={`data:image/png;base64,${pixImageBase64}`} alt="PIX QR Code" className="h-56 w-56 rounded border" />
-                ) : (
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=224x224&data=${encodeURIComponent(pixCode)}`}
-                    alt="PIX QR Code"
-                    className="h-56 w-56 rounded border"
-                  />
-                )}
+                <div className="rounded-xl border bg-card p-4 shadow-lg">
+                  {pixImageBase64 ? (
+                    <img src={`data:image/png;base64,${pixImageBase64}`} alt="PIX QR Code" className="h-56 w-56 rounded" />
+                  ) : (
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=224x224&data=${encodeURIComponent(pixCode)}`}
+                      alt="PIX QR Code"
+                      className="h-56 w-56 rounded"
+                    />
+                  )}
+                </div>
                 <div className="mt-2 w-full break-words text-center text-xs text-muted-foreground">
                   {pixCode}
                 </div>
