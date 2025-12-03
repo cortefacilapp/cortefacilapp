@@ -64,6 +64,7 @@ const App = () => (
           <Route path="/planos/pagar/:planId" element={<PlanPaymentPix />} />
           <Route path="/planos/pagar" element={<PlanPaymentPix />} />
           <Route path="/saloes" element={<SalonsBrowse />} />
+          <Route path="/salons" element={<SalonsBrowse />} />
           <Route path="/parceiros/saiba-mais" element={<PartnerPitch />} />
           <Route path="/faturas" element={<Invoices />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

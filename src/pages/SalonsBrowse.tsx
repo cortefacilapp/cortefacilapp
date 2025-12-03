@@ -1,165 +1,111 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { MapPin, Star, Scissors, Clock } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const SalonsBrowse = () => {
-  const [loading, setLoading] = useState(true);
-  const [salons, setSalons] = useState<any[]>([]);
   const [query, setQuery] = useState("");
-  const [affId, setAffId] = useState<string | null>(null);
-  const navigate = useNavigate();
+  const saloesFakes = useMemo(
+    () => [
+      { id: "1", nome: "Studio Elegance", endereco: "Rua das Flores, 102 - Centro", avaliacao: 4.8, imagem: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438" },
+      { id: "2", nome: "Barbearia Rei do Corte", endereco: "Av. Brasil, 920 - Jardim América", avaliacao: 4.9, imagem: "https://images.unsplash.com/photo-1622286348105-9c7202b64d11" },
+      { id: "3", nome: "Salon Lux Beauty", endereco: "Rua Aurora, 55 - Alto da Glória", avaliacao: 4.7, imagem: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9" },
+      { id: "4", nome: "Prime Barber & Style", endereco: "Av. Independência, 455 - República", avaliacao: 4.6, imagem: "https://images.unsplash.com/photo-1506126613408-eca07ce68773" },
+      { id: "5", nome: "Bella Donna Hair", endereco: "Rua Vitória, 210 - Jardim Europa", avaliacao: 4.8, imagem: "https://images.unsplash.com/photo-1519741497674-6111f06e36fd" },
+      { id: "6", nome: "Urban Cut Studio", endereco: "Alameda Santos, 88 - Bela Vista", avaliacao: 4.5, imagem: "https://images.unsplash.com/photo-1523374228107-6e44bd2b5246" },
+      { id: "7", nome: "Barber King", endereco: "Rua Goiás, 700 - Centro", avaliacao: 4.9, imagem: "https://images.unsplash.com/photo-1591369220450-1c9db7b96c25" },
+      { id: "8", nome: "Glow Beauty Lab", endereco: "Av. Paulista, 1234 - Bela Vista", avaliacao: 4.7, imagem: "https://images.unsplash.com/photo-1516979187457-637abb4f9353" },
+      { id: "9", nome: "Corte Fino Premium", endereco: "Rua Chile, 19 - Centro Histórico", avaliacao: 4.6, imagem: "https://images.unsplash.com/photo-1519415943484-9fa18778a1a2" },
+      { id: "10", nome: "Royal Barber Club", endereco: "Av. Atlântica, 800 - Copacabana", avaliacao: 4.8, imagem: "https://images.unsplash.com/photo-1593702295097-c8c26e1dd7b3" },
+      { id: "11", nome: "Studio Mulher", endereco: "Rua Primavera, 320 - Jardim Botânico", avaliacao: 4.7, imagem: "https://images.unsplash.com/photo-1522336572468-57d55b5b1c04" },
+      { id: "12", nome: "Barbearia Alpha", endereco: "Rua do Comércio, 45 - Centro", avaliacao: 4.6, imagem: "https://images.unsplash.com/photo-1532712938310-34cb3982ef74" },
+      { id: "13", nome: "Lux Hair & Spa", endereco: "Av. Oceânica, 990 - Barra", avaliacao: 4.8, imagem: "https://images.unsplash.com/photo-1503951458645-643d53bfd90f" },
+      { id: "14", nome: "Gentlemen’s Barbershop", endereco: "Rua XV de Novembro, 122 - Centro", avaliacao: 4.7, imagem: "https://images.unsplash.com/photo-1593702295087-5b3b4c1d2cbd" },
+      { id: "15", nome: "Elegance Hair Studio", endereco: "Av. das Nações, 400 - Centro", avaliacao: 4.6, imagem: "https://images.unsplash.com/photo-1522338218263-9b36cbb4f73b" },
+    ],
+    []
+  );
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("salons")
-        .select("id,name,address,city,state,phone,status")
-        .eq("status", "approved")
-        .order("name", { ascending: true });
-      if (!error && data) setSalons(data);
-      // load current affiliation
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        const uid = userData?.user?.id || null;
-        if (uid) {
-          const { data: aff } = await supabase
-            .from("user_affiliations")
-            .select("salon_id")
-            .eq("user_id", uid)
-            .maybeSingle();
-          setAffId(aff?.salon_id || null);
-        }
-      } catch (_) {}
-      setLoading(false);
-    };
-    load();
-  }, []);
-
-  const filtered = salons.filter((s) => {
+  const filtered = saloesFakes.filter((s) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return (
-      (s.name || "").toLowerCase().includes(q) ||
-      (s.city || "").toLowerCase().includes(q) ||
-      (s.state || "").toLowerCase().includes(q) ||
-      (s.address || "").toLowerCase().includes(q)
+      (s.nome || "").toLowerCase().includes(q) ||
+      (s.endereco || "").toLowerCase().includes(q)
     );
   });
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[200px] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
-    );
-  }
+  const [failed, setFailed] = useState<Record<string, boolean>>({});
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="fixed inset-x-0 top-0 z-50 border-b bg-card">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div className="text-xl font-bold">Salões Credenciados</div>
-          <Button variant="outline" onClick={() => navigate("/dashboard")}>Voltar ao Dashboard</Button>
+    <div className="min-h-screen bg-white">
+      <section className="bg-[#0A1A2F] text-white">
+        <div className="container mx-auto px-4 py-16 text-center">
+          <h1 className="text-4xl font-bold">Salões Credenciados</h1>
+          <p className="mx-auto mt-3 max-w-2xl text-white/80">Conheça os salões parceiros da plataforma. Catálogo demonstrativo para validar a experiência.</p>
+          <div className="mx-auto mt-6 max-w-xl">
+            <Input placeholder="Buscar por nome ou endereço" value={query} onChange={(e) => setQuery(e.target.value)} className="bg-white text-black" />
+          </div>
+          <div className="mt-6 flex justify-center">
+            <Button asChild variant="outline" className="border-white text-[#1A73E8] hover:bg-white/10">
+              <Link to="/">Voltar ao início</Link>
+            </Button>
+          </div>
         </div>
-      </header>
-      <main className="container mx-auto px-4 py-8 pt-20">
-        <div className="mb-6 grid gap-3 md:grid-cols-2">
-          <Input placeholder="Buscar por nome, cidade, estado ou endereço" value={query} onChange={(e) => setQuery(e.target.value)} />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      </section>
+      <main className="container mx-auto px-4 py-12">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((s) => (
-            <Card key={s.id}>
+            <Card key={s.id} className="overflow-hidden rounded-xl border-2 shadow-sm transition hover:scale-[1.02] hover:shadow-lg">
+              <div className="relative h-40 w-full">
+                {!failed[s.id] ? (
+                  <img
+                    src={`${s.imagem}?auto=format&fit=crop&w=800&q=60`}
+                    alt={s.nome}
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                    onError={() => setFailed((prev) => ({ ...prev, [s.id]: true }))}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#0A1A2F] to-[#1A73E8] text-white">
+                    <span className="text-lg font-semibold">{s.nome.split(" ")[0]}</span>
+                  </div>
+                )}
+              </div>
               <CardHeader>
-                <CardTitle className="text-xl flex items-center gap-2">
-                  {s.name}
-                  {affId === s.id && (
-                    <span className="text-xs rounded px-2 py-0.5 bg-primary/10 text-primary">Afiliado</span>
-                  )}
-                </CardTitle>
+                <CardTitle className="text-xl">{s.nome}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-1 text-sm">
-                  <div>{s.address}</div>
-                  <div>{s.city}/{s.state}</div>
-                  <div>{s.phone || "sem telefone"}</div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <MapPin className="h-4 w-4" />
+                  <span>{s.endereco}</span>
                 </div>
-                <div className="mt-4">
-                  <Button variant="default" className="w-full" onClick={async () => {
-                    try {
-                      const { data: userData } = await supabase.auth.getUser();
-                      const uid = userData?.user?.id;
-                      if (!uid) { toast.error("Faça login para afiliar-se"); return; }
-                      // Check last affiliation and subscription cycle
-                      const { data: current } = await supabase
-                        .from("user_affiliations")
-                        .select("salon_id, updated_at")
-                        .eq("user_id", uid)
-                        .maybeSingle();
-                      if (current?.salon_id === s.id) {
-                        toast.success("Você já está afiliado a este salão");
-                        return;
-                      }
-                        let canChange = true;
-                        // regra: só permitir troca no fim do ciclo
-                        const { data: sub } = await supabase
-                          .from("user_subscriptions")
-                          .select("current_period_end,status")
-                          .eq("user_id", uid)
-                          .order("current_period_end", { ascending: false })
-                          .maybeSingle();
-                        const periodEnd = sub?.current_period_end ? new Date(sub.current_period_end) : null;
-                        if (current?.salon_id && current.salon_id !== s.id) {
-                          if (periodEnd && new Date() < periodEnd) {
-                            canChange = false;
-                          }
-                        }
-                      if (!canChange) {
-                        toast.error("Você só pode trocar uma vez por mês ou no fim do ciclo");
-                        return;
-                      }
-                      try {
-                        const { data: res, error } = await supabase
-                          .rpc("set_user_affiliation", { p_user: uid, p_salon: s.id });
-                        if (error) throw error;
-                      } catch (_err) {
-                        const { data: existing } = await supabase
-                          .from("user_affiliations")
-                          .select("user_id")
-                          .eq("user_id", uid)
-                          .maybeSingle();
-                        if (existing?.user_id) {
-                          const { error: updErr } = await supabase
-                            .from("user_affiliations")
-                            .update({ salon_id: s.id, affiliated_at: new Date().toISOString() })
-                            .eq("user_id", uid);
-                          if (updErr) { toast.error(updErr.message || "Falha ao atualizar afiliação"); return; }
-                        } else {
-                          const { error: insErr } = await supabase
-                            .from("user_affiliations")
-                            .insert({ user_id: uid, salon_id: s.id, affiliated_at: new Date().toISOString() });
-                          if (insErr) { toast.error(insErr.message || "Falha ao criar afiliação"); return; }
-                        }
-                      }
-                      setAffId(s.id);
-                      toast.success(`Afiliado ao salão: ${s.name}`);
-                    } catch (e) {
-                      toast.error((e as any)?.message || "Erro ao afiliar-se");
-                    }
-                  }} disabled={affId === s.id}>{affId === s.id ? "Afiliado" : "Afiliar-se a este salão"}</Button>
+                <div className="mt-3 flex items-center gap-1">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star key={i} className={`h-4 w-4 ${i < Math.round(s.avaliacao) ? "text-yellow-500" : "text-gray-300"}`} fill={i < Math.round(s.avaliacao) ? "currentColor" : "none"} />
+                  ))}
+                  <span className="ml-2 text-xs text-muted-foreground">{s.avaliacao.toFixed(1)}</span>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#1A73E8]/10 px-3 py-1 text-xs text-[#1A73E8]"><Scissors className="h-3 w-3" />Corte masculino</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#1A73E8]/10 px-3 py-1 text-xs text-[#1A73E8]">Corte feminino</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#1A73E8]/10 px-3 py-1 text-xs text-[#1A73E8]">Barbearia & estética</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs text-emerald-700"><Clock className="h-3 w-3" />Aberto agora</span>
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <Button asChild className="bg-[#1A73E8] hover:bg-[#1668d6] text-white">
+                    <Link to="#">Ver Perfil</Link>
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           ))}
-          {!filtered.length && (
-            <div className="text-sm text-muted-foreground">Nenhum salão encontrado</div>
-          )}
         </div>
+        {!filtered.length && (
+          <div className="mt-8 text-center text-sm text-muted-foreground">Nenhum salão encontrado</div>
+        )}
       </main>
     </div>
   );
