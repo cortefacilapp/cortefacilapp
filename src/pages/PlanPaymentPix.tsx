@@ -222,22 +222,22 @@ const PlanPaymentPix = () => {
   return (
     <div className="min-h-screen bg-background">
       <header className="fixed inset-x-0 top-0 z-50 border-b bg-card">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div className="text-xl font-bold">Pagamento PIX</div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/planos")}>Voltar</Button>
-            <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/dashboard")}>Dashboard</Button>
+        <div className="container mx-auto flex items-center justify-between px-2 sm:px-4 py-3 sm:py-4">
+          <div className="text-lg sm:text-xl font-bold truncate">Pagamento PIX</div>
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap overflow-x-auto">
+            <Button variant="outline" className="text-primary border-primary h-9 md:h-10 px-3 md:px-4 text-sm" onClick={() => navigate("/planos")}>Voltar</Button>
+            <Button variant="outline" className="text-primary border-primary h-9 md:h-10 px-3 md:px-4 text-sm" onClick={() => navigate("/dashboard")}>Dashboard</Button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 pt-20">
+      <main className="container mx-auto px-2 sm:px-4 py-6 sm:py-8 pt-20 overflow-x-hidden">
         <Card className="border-2 hover:shadow-lg transition-shadow">
           <CardHeader className="bg-primary/5 rounded-md">
             <CardTitle>{plan?.name} • R$ {(Number(plan?.price) / 100).toFixed(2)} / {plan?.interval === "year" ? "ano" : "mês"}</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-6 md:grid-cols-2">
+          <CardContent className="overflow-x-hidden">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 md:gap-8 md:grid-cols-2">
               <div>
                 <div className="text-sm text-muted-foreground">Cortes mensais: {plan?.monthly_credits}</div>
                 {(() => {
@@ -256,24 +256,28 @@ const PlanPaymentPix = () => {
                 <div className="mt-2 text-sm">Use o QR Code ao lado para pagar sua assinatura.</div>
                 <div className="mt-3 text-sm">Tempo restante: {String(Math.floor(secondsLeft / 60)).padStart(2, "0")}:{String(secondsLeft % 60).padStart(2, "0")}</div>
               </div>
-              <div className="flex flex-col items-center justify-center">
-                <div className="rounded-xl border bg-card p-4 shadow-lg">
+              <div className="flex flex-col items-center justify-center w-full">
+                <div className="rounded-xl border bg-card p-4 shadow-lg w-full max-w-[260px] sm:max-w-[300px]">
                   {pixImageBase64 ? (
-                    <img src={`data:image/png;base64,${pixImageBase64}`} alt="PIX QR Code" className="h-56 w-56 rounded" />
+                    <img src={`data:image/png;base64,${pixImageBase64}`} alt="PIX QR Code" className="rounded w-[70vw] h-[70vw] sm:h-56 sm:w-56 max-w-[224px] max-h-[224px]" />
                   ) : (
                     <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=224x224&data=${encodeURIComponent(pixCode)}`}
                       alt="PIX QR Code"
-                      className="h-56 w-56 rounded"
+                      className="rounded w-[70vw] h-[70vw] sm:h-56 sm:w-56 max-w-[224px] max-h-[224px]"
                     />
                   )}
                 </div>
-                <div className="mt-2 w-full break-words text-center text-xs text-muted-foreground">
+                <div className="mt-2 w-full break-all px-2 text-center text-xs text-muted-foreground">
                   {pixCode}
                 </div>
-                <div className="mt-3 flex gap-2">
-                  <Button variant="outline" onClick={() => { navigator.clipboard.writeText(pixCode); toast.success("Código PIX copiado"); }}>Copiar código PIX</Button>
-                  <Button onClick={() => { setStep(3); payViaCheckout(); }}>Enviar comprovante via WhatsApp</Button>
+                <div className="mt-3 w-full grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2">
+                  <div className="sm:col-span-1">
+                    <Button variant="outline" className="w-full h-9 md:h-10 text-sm" onClick={() => { navigator.clipboard.writeText(pixCode); toast.success("Código PIX copiado"); }}>Copiar código PIX</Button>
+                  </div>
+                  <div className="sm:col-span-1">
+                    <Button className="w-full h-9 md:h-10 text-sm" onClick={() => { setStep(3); payViaCheckout(); }}>Enviar comprovante via WhatsApp</Button>
+                  </div>
                 </div>
                 {!!err && <div className="mt-2 text-xs text-muted-foreground">{err}</div>}
               </div>
