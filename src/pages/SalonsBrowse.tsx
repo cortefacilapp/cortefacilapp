@@ -11,7 +11,7 @@ const SalonsBrowse = () => {
   const [query, setQuery] = useState("");
   const [backTo, setBackTo] = useState<string>("/");
   type SalonItem = { id: string; nome: string; endereco: string; avaliacao: number; imagem?: string | null };
-  type SalonRow = { id: string; name?: string | null; city?: string | null; state?: string | null; address?: string | null; status?: string | null; approved_at?: string | null };
+  type SalonRow = { id: string; name?: string | null; city?: string | null; state?: string | null; address?: string | null; status?: string | null; approved_at?: string | null; photo_url?: string | null };
   const [dbSalons, setDbSalons] = useState<SalonItem[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [affiliatedSalonId, setAffiliatedSalonId] = useState<string | null>(null);
@@ -44,13 +44,13 @@ const SalonsBrowse = () => {
       try {
         const res = await supabase
           .from("salons")
-          .select("id,name,city,state,address,status,approved_at")
+          .select("id,name,city,state,address,status,approved_at,photo_url")
           .eq("status", "approved")
           .order("approved_at", { ascending: false });
         const rows = (res.data || []) as SalonRow[];
         const mapped: SalonItem[] = rows.map((s) => {
           const addr = [s.address || "", s.city && s.state ? `${s.city}/${s.state}` : s.city || s.state || ""].filter(Boolean).join(" - ");
-          return { id: String(s.id), nome: String(s.name || "Salão"), endereco: addr, avaliacao: 4.7, imagem: null };
+          return { id: String(s.id), nome: String(s.name || "Salão"), endereco: addr, avaliacao: 4.7, imagem: s.photo_url || null };
         });
         setDbSalons(mapped);
       } catch {
@@ -163,13 +163,19 @@ const SalonsBrowse = () => {
             <Card key={s.id} className={`overflow-hidden rounded-xl border-2 shadow-sm transition hover:scale-[1.02] hover:shadow-lg ${affiliatedSalonId === s.id ? "border-emerald-500 ring-2 ring-emerald-400" : ""}`}>
               <div className="relative h-40 w-full">
                 {s.imagem && !failed[s.id] ? (
-                  <img
-                    src={`${s.imagem}?auto=format&fit=crop&w=800&q=60`}
-                    alt={s.nome}
-                    loading="lazy"
-                    className="h-full w-full object-cover"
-                    onError={() => setFailed((prev) => ({ ...prev, [s.id]: true }))}
-                  />
+                  (() => {
+                    const isUnsplash = String(s.imagem || "").includes("unsplash.com");
+                    const src = isUnsplash ? `${s.imagem}?auto=format&fit=crop&w=800&q=60` : String(s.imagem);
+                    return (
+                      <img
+                        src={src}
+                        alt={s.nome}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                        onError={() => setFailed((prev) => ({ ...prev, [s.id]: true }))}
+                      />
+                    );
+                  })()
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#0A1A2F] to-[#1A73E8] text-white">
                     <span className="text-lg font-semibold">{s.nome.split(" ")[0]}</span>

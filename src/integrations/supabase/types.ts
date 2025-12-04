@@ -195,6 +195,7 @@ export type Database = {
           created_at: string
           email: string
           full_name: string | null
+          name: string | null
           id: string
           phone: string | null
           updated_at: string
@@ -203,6 +204,7 @@ export type Database = {
           created_at?: string
           email: string
           full_name?: string | null
+          name?: string | null
           id: string
           phone?: string | null
           updated_at?: string
@@ -211,6 +213,7 @@ export type Database = {
           created_at?: string
           email?: string
           full_name?: string | null
+          name?: string | null
           id?: string
           phone?: string | null
           updated_at?: string
@@ -230,6 +233,7 @@ export type Database = {
           longitude: number | null
           name: string
           owner_id: string
+          photo_url: string | null
           phone: string | null
           postal_code: string | null
           state: string
@@ -248,6 +252,7 @@ export type Database = {
           longitude?: number | null
           name: string
           owner_id: string
+          photo_url?: string | null
           phone?: string | null
           postal_code?: string | null
           state: string
@@ -266,6 +271,7 @@ export type Database = {
           longitude?: number | null
           name?: string
           owner_id?: string
+          photo_url?: string | null
           phone?: string | null
           postal_code?: string | null
           state?: string

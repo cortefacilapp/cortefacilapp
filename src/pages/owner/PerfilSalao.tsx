@@ -22,9 +22,10 @@ const PerfilSalao = () => {
     postal_code: string | null;
     address: string;
     doc: string | null;
+    photo_url: string | null;
   };
   const [salon, setSalon] = useState<SalonRow | null>(null);
-  const [form, setForm] = useState<SalonForm>({ name: "", phone: null, description: null, state: "", city: "", postal_code: null, address: "", doc: null });
+  const [form, setForm] = useState<SalonForm>({ name: "", phone: null, description: null, state: "", city: "", postal_code: null, address: "", doc: null, photo_url: null });
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [ownerFullName, setOwnerFullName] = useState<string>("");
 
@@ -49,9 +50,10 @@ const PerfilSalao = () => {
           postal_code: s.postal_code ?? null,
           address: s.address || "",
           doc: sExt.doc ?? null,
+          photo_url: s.photo_url ?? null,
         });
       } else {
-        setForm({ name: "", phone: null, description: null, state: "", city: "", postal_code: null, address: "", doc: null });
+        setForm({ name: "", phone: null, description: null, state: "", city: "", postal_code: null, address: "", doc: null, photo_url: null });
       }
 
       const { data: profile } = await supabase
@@ -68,27 +70,77 @@ const PerfilSalao = () => {
 
   const update = async () => {
     if (!salon?.id) return;
-    const { error } = await supabase
-      .from("salons")
-      .update({
-        name: form.name,
-        phone: form.phone,
-        description: form.description,
-        state: form.state,
-        city: form.city,
-        postal_code: form.postal_code,
-        address: form.address,
-      })
-      .eq("id", salon.id);
+      const { error } = await supabase
+        .from("salons")
+        .update({
+          name: form.name,
+          phone: form.phone,
+          description: form.description,
+          state: form.state,
+          city: form.city,
+          postal_code: form.postal_code,
+          address: form.address,
+          photo_url: form.photo_url,
+        })
+        .eq("id", salon.id);
     if (error) { toast.error("Erro ao salvar"); return; }
     if (ownerId) {
       const { error: profErr } = await supabase
         .from("profiles")
-        .update({ full_name: ownerFullName, name: ownerFullName } as any)
+        .update({ full_name: ownerFullName, name: ownerFullName })
         .eq("id", ownerId);
       if (profErr) { toast.error("Erro ao salvar nome completo"); return; }
     }
     toast.success("Perfil atualizado");
+  };
+
+  const uploadPhoto = async (file: File) => {
+    if (!salon?.id) { toast.error("Salão não encontrado"); return; }
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const path = `${salon.id}/profile-${Date.now()}.${ext}`;
+      let bucket = "salons";
+      let up = await supabase.storage.from(bucket).upload(path, file, { upsert: true, cacheControl: "3600" });
+      if (up.error && String(up.error.message || "").toLowerCase().includes("not found")) {
+        bucket = "public";
+        up = await supabase.storage.from(bucket).upload(path, file, { upsert: true, cacheControl: "3600" });
+      }
+      if (up.error) { throw up.error; }
+      const { data: pub } = supabase.storage.from(bucket).getPublicUrl(path);
+      const url = pub?.publicUrl || "";
+      if (!url) { throw new Error("Falha ao obter URL pública"); }
+      setForm({ ...form, photo_url: url });
+      const { error: updErr } = await supabase.from("salons").update({ photo_url: url }).eq("id", salon.id);
+      if (updErr) { toast.error("Foto enviada, mas falhou ao salvar URL"); return; }
+      toast.success("Foto atualizada");
+    } catch (e: unknown) {
+      const msg = typeof e === "object" && e && "message" in e ? String((e as { message?: unknown }).message) : "Erro ao enviar foto";
+      toast.error(msg);
+    }
+  };
+
+  const removePhoto = async () => {
+    if (!salon?.id) return;
+    const url = form.photo_url || "";
+    if (!url) return;
+    try {
+      const marker = "/storage/v1/object/public/";
+      const idx = url.indexOf(marker);
+      if (idx === -1) throw new Error("URL inválida");
+      const tail = url.slice(idx + marker.length);
+      const parts = tail.split("/");
+      const bucket = parts[0];
+      const path = tail.slice(bucket.length + 1);
+      const { error: delErr } = await supabase.storage.from(bucket).remove([path]);
+      if (delErr) throw delErr;
+      const { error: updErr } = await supabase.from("salons").update({ photo_url: null }).eq("id", salon.id);
+      if (updErr) throw updErr;
+      setForm({ ...form, photo_url: null });
+      toast.success("Foto removida");
+    } catch (e: unknown) {
+      const msg = typeof e === "object" && e && "message" in e ? String((e as { message?: unknown }).message) : "Erro ao remover foto";
+      toast.error(msg);
+    }
   };
 
   if (loading) {
@@ -152,6 +204,19 @@ const PerfilSalao = () => {
               <Label htmlFor="description">Descrição</Label>
               <Input id="description" value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} />
               {!form.description && <div className="text-xs text-muted-foreground">Em branco</div>}
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="photo">Foto do salão</Label>
+              {form.photo_url && (
+                <div className="flex items-center gap-3">
+                  <img src={form.photo_url} alt="Foto do salão" className="h-32 w-32 rounded object-cover border" />
+                  <Button variant="outline" onClick={removePhoto}>Remover foto</Button>
+                </div>
+              )}
+              <Input id="photo" type="file" accept="image/*" onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadPhoto(f);
+              }} />
             </div>
             <div className="md:col-span-2">
               <Button className="mt-2" onClick={update}>Salvar</Button>

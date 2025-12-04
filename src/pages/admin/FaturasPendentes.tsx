@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useMemo, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2 } from "lucide-react";
+import { Loader2, CreditCard, Mail, CalendarDays, Receipt, DollarSign, BadgeCheck, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 type Row = {
@@ -214,78 +214,134 @@ const FaturasPendentes = () => {
 
   // Aprovação manual removida: pagamentos comuns não exigem ação do admin
 
-  const filtered = rows.filter((r) => {
-    if (!query) return true;
-    const q = query.toLowerCase();
-    return (
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
       (r.profile?.email || "").toLowerCase().includes(q) ||
       (r.plan?.name || "").toLowerCase().includes(q) ||
       (r.provider_payment_id || "").toLowerCase().includes(q)
     );
-  });
+  }, [query, rows]);
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[200px] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
-    );
-  }
+  const pendingCount = rows.length;
+  const pendingTotal = useMemo(() => rows.reduce((acc, r) => acc + Number(r.amount || 0), 0), [rows]);
+  const providersDistinct = useMemo(() => new Set(rows.map((r) => String(r.provider || "").toLowerCase()).filter(Boolean)).size, [rows]);
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Faturas Pendentes</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por email, plano ou código" />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {filtered.map((r) => (
-                <div key={r.id} className="rounded border p-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">{r.plan?.name || (r.provider?.toUpperCase() || "Pagamento")} • R$ {(Number(r.amount) / 100).toFixed(2)}</div>
-                    <div className="text-xs text-muted-foreground">{
-                      new Date(r.created_at).toLocaleString("pt-BR", {
-                        timeZone: "America/Sao_Paulo",
-                        year: "numeric",
-                        month: "2-digit",
-                        day: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                        hour12: false,
-                      })
-                    }</div>
-                  </div>
-                  <div className="mt-1">Usuário: {r.profile?.full_name || r.profile?.name || "--"}</div>
-                  <div className="text-xs text-muted-foreground">Email: {r.profile?.email || r.user_id}</div>
-                  <div className="mt-1">Comprovante: {r.provider_payment_id || "--"}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {r.plan?.name
-                      ? (() => {
-                          const price = (Number(r.plan!.price) / 100).toFixed(2);
-                          const intervalLabel = r.plan!.interval === "year" ? "ano" : "mês";
-                          const credits = r.plan!.monthly_credits ? `${r.plan!.monthly_credits} cortes/mês` : "";
-                          return `Plano: ${r.plan!.name} • R$ ${price}/${intervalLabel}${credits ? " • " + credits : ""}`;
-                        })()
-                      : null}
-                  </div>
-                  <div className="mt-2 text-xs text-muted-foreground">Aprovação não necessária. Processamento automático após pagamento.</div>
-                  <Button className="mt-2 w-full" onClick={() => approve(r)} disabled={approvingId === r.id}>Aprovar manualmente</Button>
-                  <Button variant="destructive" className="mt-2 w-full" onClick={() => reject(r)} disabled={rejectingId === r.id}>Reprovar</Button>
-                </div>
-              ))}
-              {!filtered.length && (
-                <div className="text-sm text-muted-foreground">Nenhuma fatura pendente</div>
-              )}
+    <div className="space-y-8">
+      <div className="rounded-xl bg-gradient-to-br from-[#0A1A2F] to-[#1A73E8] p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-2xl font-bold">Faturas Pendentes</div>
+            <div className="text-white/80">Análise e aprovação de pagamentos</div>
+          </div>
+          <div className="hidden md:flex items-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm">
+              <Receipt className="h-4 w-4" />
+              <span>{pendingCount} pendentes</span>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex min-h-[200px] items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-3">
+          <Card className="md:col-span-2 border-2">
+            <CardHeader>
+              <CardTitle>Lista</CardTitle>
+              <CardDescription>Buscar por email, plano ou comprovante</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por email, plano ou código" />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                {filtered.map((r) => (
+                  <Card key={r.id} className="overflow-hidden border-2 transition hover:scale-[1.01]">
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between text-lg">
+                        <span className="inline-flex items-center gap-2">
+                          <CreditCard className="h-4 w-4" />
+                          {r.plan?.name || (r.provider?.toUpperCase() || "Pagamento")}
+                        </span>
+                        <span className="text-primary">R$ {(Number(r.amount) / 100).toFixed(2)}</span>
+                      </CardTitle>
+                      <CardDescription className="flex items-center gap-2">
+                        <CalendarDays className="h-3 w-3" />
+                        {new Date(r.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Mail className="h-4 w-4" />
+                        <span>{r.profile?.email || r.user_id}</span>
+                      </div>
+                      <div className="mt-1 text-sm">Usuário: {r.profile?.full_name || r.profile?.name || "--"}</div>
+                      <div className="mt-1 text-sm">Comprovante: {r.provider_payment_id || "--"}</div>
+                      {r.plan?.name ? (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          {(() => {
+                            const price = (Number(r.plan!.price) / 100).toFixed(2);
+                            const intervalLabel = r.plan!.interval === "year" ? "ano" : "mês";
+                            const credits = r.plan!.monthly_credits ? `${r.plan!.monthly_credits} cortes/mês` : "";
+                            return `Plano: ${r.plan!.name} • R$ ${price}/${intervalLabel}${credits ? " • " + credits : ""}`;
+                          })()}
+                        </div>
+                      ) : null}
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <Button onClick={() => approve(r)} disabled={approvingId === r.id}>
+                          <BadgeCheck className="mr-2 h-4 w-4" /> Aprovar
+                        </Button>
+                        <Button variant="destructive" onClick={() => reject(r)} disabled={rejectingId === r.id}>
+                          <XCircle className="mr-2 h-4 w-4" /> Reprovar
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                {!filtered.length && (
+                  <div className="text-sm text-muted-foreground">Nenhuma fatura pendente</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-2">
+            <CardHeader>
+              <CardTitle>Resumo</CardTitle>
+              <CardDescription>Métricas rápidas</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span>Total pendentes</span>
+                  <span className="font-medium">{pendingCount}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Valor total</span>
+                  <span className="font-medium">R$ {(pendingTotal / 100).toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Provedores distintos</span>
+                  <span className="font-medium">{providersDistinct}</span>
+                </div>
+              </div>
+              <div className="mt-4 rounded-xl border p-4 bg-muted/40 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-muted-foreground">Estimativa repasse salões</div>
+                  <div className="text-2xl font-bold">R$ {((pendingTotal * 0.8) / 100).toFixed(2)}</div>
+                </div>
+                <DollarSign className="h-6 w-6 text-primary" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

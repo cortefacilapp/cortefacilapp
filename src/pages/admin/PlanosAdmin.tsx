@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2 } from "lucide-react";
+import { Loader2, BadgeCheck, Scissors } from "lucide-react";
 import { toast } from "sonner";
 
 type Plan = { id: string; name: string; price: number; monthly_credits: number | null; interval: string | null; active: boolean };
@@ -97,40 +98,107 @@ const PlanosAdmin = () => {
     await savePlan(next);
   };
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[200px] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Planos</CardTitle>
-          <CardDescription>Gerencie os três planos ativos (Social, Popular, Premium)</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex justify-end mb-3">
-            <Button onClick={() => setCreateOpen(true)}>Adicionar plano</Button>
+    <div className="space-y-8">
+      <div className="rounded-xl bg-gradient-to-br from-[#0A1A2F] to-[#1A73E8] p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-2xl font-bold">Planos</div>
+            <div className="text-white/80">Gerencie os planos disponíveis na plataforma</div>
           </div>
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {plans.map((p) => (
-              <div key={p.id} className={`rounded border p-3 ${p.active ? "border-primary" : ""}`}>
-                <div className="font-medium">{p.name}</div>
-                <div className="text-sm text-muted-foreground">R$ {(Number(p.price) / 100).toFixed(2)} / mês</div>
-                <div className="text-sm">Cortes/mês: {p.monthly_credits ?? 0}</div>
-                <div className="mt-2 flex gap-2">
-                  <Button variant="outline" className="w-full" onClick={() => setSelected(p)}>Editar</Button>
-                  <Button className="w-full" onClick={() => toggleActive(p)}>{p.active ? "Desativar" : "Ativar"}</Button>
+          <div className="hidden md:flex items-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm">
+              <BadgeCheck className="h-4 w-4" />
+              <span>{plans.filter((p) => p.active).length} ativos</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex min-h-[200px] items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-3">
+          <Card className="md:col-span-2 border-2">
+            <CardHeader>
+              <CardTitle>Catálogo</CardTitle>
+              <CardDescription>Social, Popular e Premium</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex justify-end mb-4">
+                <Button onClick={() => setCreateOpen(true)}>Adicionar plano</Button>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {plans.map((p) => (
+                  <Card key={p.id} className={`overflow-hidden border-2 transition hover:scale-[1.01] ${p.active ? "border-primary" : ""}`}>
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <span>{p.name}</span>
+                        {p.active ? (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">
+                            <BadgeCheck className="h-3 w-3" /> Ativo
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                            Inativo
+                          </span>
+                        )}
+                      </CardTitle>
+                      <CardDescription>
+                        R$ {(Number(p.price) / 100).toFixed(2)} / mês
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Scissors className="h-4 w-4" />
+                        <span>{Number(p.monthly_credits || 0)} cortes/mês</span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <Button variant="outline" onClick={() => setSelected(p)}>Editar</Button>
+                        <div className="flex items-center justify-end">
+                          <Switch
+                            checked={p.active}
+                            onCheckedChange={(checked) => savePlan({ ...p, active: checked })}
+                            aria-label="Ativar plano"
+                          />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                {!plans.length && (
+                  <div className="text-sm text-muted-foreground">Nenhum plano encontrado</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-2">
+            <CardHeader>
+              <CardTitle>Resumo</CardTitle>
+              <CardDescription>Métricas rápidas</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span>Total de planos</span>
+                  <span className="font-medium">{plans.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Ativos</span>
+                  <span className="font-medium">{plans.filter((p) => p.active).length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Soma cortes/mês</span>
+                  <span className="font-medium">{plans.reduce((acc, cur) => acc + Number(cur.monthly_credits || 0), 0)}</span>
                 </div>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
         <DialogContent>

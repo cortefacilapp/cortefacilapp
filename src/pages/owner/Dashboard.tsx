@@ -252,6 +252,7 @@ const OwnerDashboardPage = () => {
               return ps && pe && nowD >= ps && nowD <= pe && ["active","approved","trialing"].includes(st);
             }) || (subs && subs.length ? subs[0] : null);
             planId = pick?.plan_id || null;
+            let termEnd: string | null = pick?.current_period_end || (subs && subs.length ? subs[0]?.current_period_end : null) || null;
             if (!planId) {
               const { data: pays } = await supabase
                 .from("payments")
@@ -291,6 +292,7 @@ const OwnerDashboardPage = () => {
               full_name: nameById.get(uid) || "",
               email: emailById.get(uid) || "",
               plan_name: planName || "",
+              period_end: termEnd || null,
             });
           }
           setAffiliates(detailed);
@@ -697,15 +699,18 @@ const OwnerDashboardPage = () => {
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {affiliates.map((u) => (
                 <div key={u.user_id || u.id} className="rounded-md border-2 bg-card p-4 hover:shadow-md transition-shadow">
-                  <div className="font-medium">{displayNameFor(u)}</div>
-                  <div className="text-sm text-muted-foreground">Afiliado em: {u.affiliated_at ? new Date(u.affiliated_at).toLocaleDateString() : "--"}</div>
-                  <div className="text-sm">Validações no ciclo atual: {u.used_count}</div>
-                  <div className="text-sm">Plano: {u.plan_name || "--"}</div>
-                </div>
-              ))}
-            {!affiliates.length && (
-              <div className="text-sm text-muted-foreground">Nenhum usuário afiliado</div>
-            )}
+                <div className="font-medium">{displayNameFor(u)}</div>
+                <div className="text-sm text-muted-foreground">Afiliado em: {u.affiliated_at ? new Date(u.affiliated_at).toLocaleDateString() : "--"}</div>
+                <div className="text-sm">Validações no ciclo atual: {u.used_count}</div>
+                {(u.period_end || u.sub_end) && (
+                  <div className="text-sm">Vence: {new Date(u.period_end || u.sub_end).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</div>
+                )}
+                <div className="text-sm">Plano: {u.plan_name || "--"}</div>
+              </div>
+            ))}
+          {!affiliates.length && (
+            <div className="text-sm text-muted-foreground">Nenhum usuário afiliado</div>
+          )}
           </div>
         </CardContent>
       </Card>

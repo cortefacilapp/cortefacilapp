@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { LogOut, Scissors, Store, Users, DollarSign, Home, Loader2 } from "lucide-react";
+import { LogOut, Scissors, Store, Users, DollarSign, Home, Loader2, MapPin, BadgeCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface AdminDashboardProps {
@@ -25,6 +26,7 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
   type PaymentRow = { platform_amount: number; status: string | null; created_at: string };
   const [activeSalons, setActiveSalons] = useState<SalonActiveRow[]>([]);
   const [pendingSalons, setPendingSalons] = useState<SalonPendingRow[]>([]);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     const loadCounts = async () => {
@@ -134,105 +136,133 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
   };
 
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="mb-2 text-3xl font-bold">Painel Administrativo</h1>
-        <p className="text-muted-foreground">Gerencie a plataforma</p>
+    <div className="space-y-8">
+      <div className="rounded-xl bg-gradient-to-br from-[#0A1A2F] to-[#1A73E8] p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-2xl font-bold">Painel Administrativo</div>
+            <div className="text-white/80">Visão geral e ações rápidas</div>
+          </div>
+          <div className="hidden md:flex items-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm">
+              <Store className="h-4 w-4" />
+              <span>{pendingCount} pendentes</span>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm">
+              <Users className="h-4 w-4" />
+              <span>{usersCount} usuários</span>
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm">
+              <BadgeCheck className="h-4 w-4" />
+              <span>{activeCount} salões ativos</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="border-2 border-primary">
+      <div className="grid gap-6 md:grid-cols-3">
+        <Card className="md:col-span-2 border-2">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Store className="h-5 w-5" />
-              Salões Pendentes
-            </CardTitle>
-            <CardDescription>Aguardando aprovação</CardDescription>
+            <CardTitle>Atalhos e Contagens</CardTitle>
+            <CardDescription>Navegação rápida e visão geral</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <p className="text-2xl font-bold text-primary">{pendingCount}</p>
-              <Button className="mt-4 w-full" variant="outline" onClick={() => navigate("/admin/pendentes")}>
-                Ver Solicitações
-              </Button>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Card className="overflow-hidden border-2 transition hover:scale-[1.01]">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-2"><Store className="h-4 w-4" /> Pendentes</span>
+                    <span className="text-primary">{pendingCount}</span>
+                  </CardTitle>
+                  <CardDescription>Aguardando aprovação</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button variant="outline" className="w-full" onClick={() => navigate("/admin/pendentes")}>Ver Solicitações</Button>
+                </CardContent>
+              </Card>
+
+              <Card className="overflow-hidden border-2 transition hover:scale-[1.01]">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-2"><Users className="h-4 w-4" /> Usuários</span>
+                    <span className="text-primary">{usersCount}</span>
+                  </CardTitle>
+                  <CardDescription>Total de clientes</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button variant="outline" className="w-full" onClick={() => navigate("/admin/usuarios")}>Ver Detalhes</Button>
+                </CardContent>
+              </Card>
+
+              <Card className="overflow-hidden border-2 transition hover:scale-[1.01]">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-2"><Store className="h-4 w-4" /> Ativos</span>
+                    <span className="text-primary">{activeCount}</span>
+                  </CardTitle>
+                  <CardDescription>Salões aprovados</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button variant="outline" className="w-full" onClick={() => setActiveOpen(true)}>Ver Salões</Button>
+                </CardContent>
+              </Card>
+
+              <Card className="overflow-hidden border-2 transition hover:scale-[1.01] lg:col-span-3">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><DollarSign className="h-4 w-4" /> Receita da Plataforma</CardTitle>
+                  <CardDescription>20% dos repasses • este mês</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">R$ {(platformRevenue / 100).toFixed(2)}</div>
+                </CardContent>
+              </Card>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-2">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Usuários Ativos
-            </CardTitle>
-            <CardDescription>Total de clientes</CardDescription>
+            <CardTitle>Salões Pendentes</CardTitle>
+            <CardDescription>Novos cadastros</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <p className="text-2xl font-bold">{usersCount}</p>
-              <Button className="mt-4 w-full" variant="outline" onClick={() => navigate("/admin/usuarios")}>
-                Ver Detalhes
-              </Button>
+            <div className="mb-4">
+              <Input placeholder="Buscar por nome ou cidade" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Store className="h-5 w-5" />
-              Salões Ativos
-            </CardTitle>
-            <CardDescription>Aprovados</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <p className="text-2xl font-bold">{activeCount}</p>
-              <Button className="mt-4 w-full" variant="outline" onClick={() => setActiveOpen(true)}>
-                Ver Salões
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
-              Receita da Plataforma
-            </CardTitle>
-            <CardDescription>20% dos repasses</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <p className="text-2xl font-bold text-accent">R$ {(platformRevenue / 100).toFixed(2)}</p>
-              <p className="text-sm text-muted-foreground">este mês</p>
-            </div>
+            {pendingSalons.length ? (
+              <div className="grid gap-3">
+                {pendingSalons
+                  .filter((s) => {
+                    const q = query.trim().toLowerCase();
+                    if (!q) return true;
+                    return (
+                      String(s.name || "").toLowerCase().includes(q) ||
+                      String(s.city || "").toLowerCase().includes(q) ||
+                      String(s.state || "").toLowerCase().includes(q)
+                    );
+                  })
+                  .slice(0, 6)
+                  .map((s) => (
+                    <Card key={s.id} className="overflow-hidden border-2">
+                      <CardHeader>
+                        <CardTitle className="text-lg">{String(s.name || "Salão")}</CardTitle>
+                        <CardDescription className="flex items-center gap-2">
+                          <MapPin className="h-3 w-3" /> {String(s.city || "")}/{String(s.state || "")}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Button variant="outline" className="w-full" onClick={() => navigate("/admin/pendentes")}>Ver detalhes</Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                <Button variant="outline" className="w-full" onClick={() => navigate("/admin/pendentes")}>Ver todas</Button>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">Nenhum salão pendente de aprovação</div>
+            )}
           </CardContent>
         </Card>
       </div>
-
-      <Card className="mt-8">
-        <CardHeader>
-          <CardTitle>Salões Aguardando Aprovação</CardTitle>
-          <CardDescription>Novos cadastros de salões</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {pendingSalons.length ? (
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {pendingSalons.map((s) => (
-                <div key={s.id} className="rounded border p-3">
-                  <div className="font-medium">{String(s.name || "Salão")}</div>
-                  <div className="text-sm text-muted-foreground">{String(s.city || "")}/{String(s.state || "")}</div>
-                  <Button variant="outline" className="mt-3 w-full" onClick={() => navigate("/admin/pendentes")}>Ver detalhes</Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nenhum salão pendente de aprovação</p>
-          )}
-        </CardContent>
-      </Card>
 
       <Dialog open={activeOpen} onOpenChange={setActiveOpen}>
         <DialogContent>
