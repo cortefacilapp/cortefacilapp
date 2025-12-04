@@ -66,7 +66,7 @@ const AdminLayout = () => {
             <nav className="hidden md:flex items-center gap-3">
               <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin")}>
                 <Home className="mr-2 h-4 w-4" />
-                Início
+                <span translate="no" className="notranslate">Início</span>
               </Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin/financeiro")}>Financeiro</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => navigate("/admin/saloes")}>Salões Ativos</Button>
@@ -85,7 +85,7 @@ const AdminLayout = () => {
         {navOpen && (
           <div className="md:hidden border-t bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]">
             <div className="container mx-auto px-4 py-3 grid gap-2">
-              <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin"); }}>Início</Button>
+              <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin"); }}><span translate="no" className="notranslate">Início</span></Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/financeiro"); }}>Financeiro</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/saloes"); }}>Salões Ativos</Button>
               <Button variant="outline" className="text-primary border-primary" onClick={() => { setNavOpen(false); navigate("/admin/pendentes"); }}>Salões Pendentes</Button>
