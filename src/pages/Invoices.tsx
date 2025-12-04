@@ -19,6 +19,7 @@ const Invoices = () => {
   const [planName, setPlanName] = useState<string | null>(null);
   const [planPriceCents, setPlanPriceCents] = useState<number | null>(null);
   const [planInterval, setPlanInterval] = useState<string | null>(null);
+  const [plans, setPlans] = useState<PlanRow[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -51,6 +52,11 @@ const Invoices = () => {
         setPlanPriceCents(null);
         setPlanInterval(null);
       }
+      const { data: plansActive } = await supabase
+        .from("plans")
+        .select("name,price,interval,monthly_credits")
+        .eq("active", true);
+      setPlans(((plansActive || []) as PlanRow[]));
       const { data: pays } = await supabase
         .from("payments")
         .select("id, amount, currency, status, created_at, provider, provider_payment_id")
@@ -169,6 +175,43 @@ const Invoices = () => {
     }
   };
 
+  const resolvePlanName = (amountCents: number) => {
+    if (!Array.isArray(plans) || plans.length === 0) return planName || null;
+    const cents = Math.round(Number(amountCents) || 0);
+    const byExactCents = plans.find((pl) => Math.round(Number(pl.price) || 0) === cents);
+    if (byExactCents) return byExactCents.name;
+    const byReal = plans.find((pl) => {
+      const pr = Number(pl.price) || 0;
+      return Math.round(pr * 100) === cents || Math.round(pr) === Math.round(cents / 100);
+    });
+    return byReal?.name || planName || null;
+  };
+
+  const planTitleFor = (amountCents: number) => {
+    const cents = Math.round(Number(amountCents) || 0);
+    let match: PlanRow | null = null;
+    if (Array.isArray(plans) && plans.length) {
+      match = plans.find((pl) => Math.round(Number(pl.price) || 0) === cents) || null;
+      if (!match) {
+        match = plans.find((pl) => {
+          const pr = Number(pl.price) || 0;
+          return Math.round(pr * 100) === cents || Math.round(pr) === Math.round(cents / 100);
+        }) || null;
+      }
+    }
+    const name = match?.name || planName || "Plano";
+    const intervalLabel = (match?.interval || planInterval) === "year" ? "ano" : "mês";
+    const creditsLabel = typeof match?.monthly_credits === "number" ? ` • ${match?.monthly_credits} cortes/mês` : "";
+    const note = name === "Social"
+      ? " • corte simples degradê"
+      : name === "Popular"
+      ? " • corte simples + sobrancelhas"
+      : name === "Premium"
+      ? " • corte profissional + sobrancelha + barba"
+      : "";
+    return `${name} • ${intervalLabel}${creditsLabel}${note}`;
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-[200px] items-center justify-center">
@@ -255,8 +298,7 @@ const Invoices = () => {
               {payments.map((p) => (
                 <div key={p.id} className="rounded-md border-2 bg-card p-4 text-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between">
-                    <div className="font-medium">{p.provider?.toUpperCase()}</div>
-                    <div className="text-xs text-muted-foreground">{p.provider_payment_id || "--"}</div>
+                    <div className="font-medium">{planTitleFor(p.amount)}</div>
                   </div>
                   <div className="mt-2">
                     {(() => {
@@ -305,8 +347,7 @@ const Invoices = () => {
               {paidPayments.map((p) => (
                 <div key={p.id} className="rounded-md border-2 bg-card p-4 text-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between">
-                    <div className="font-medium">{p.provider?.toUpperCase()}</div>
-                    <div className="text-xs text-muted-foreground">{p.provider_payment_id || "--"}</div>
+                    <div className="font-medium">{planTitleFor(p.amount)}</div>
                   </div>
                   <div className="mt-2">
                     {(() => {

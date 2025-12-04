@@ -139,7 +139,9 @@ ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payouts ENABLE ROW LEVEL SECURITY;
 
 -- Create function to check user role
-CREATE OR REPLACE FUNCTION public.has_role(_user_id UUID, _role app_role)
+DROP FUNCTION IF EXISTS public.has_role(uuid, app_role);
+DROP FUNCTION IF EXISTS public.has_role(uuid, text);
+CREATE OR REPLACE FUNCTION public.has_role(_user_id UUID, _role TEXT)
 RETURNS BOOLEAN
 LANGUAGE SQL
 STABLE
@@ -149,7 +151,7 @@ AS $$
   SELECT EXISTS (
     SELECT 1
     FROM public.user_roles
-    WHERE user_id = _user_id AND role = _role
+    WHERE user_id = _user_id AND role = _role::app_role
   )
 $$;
 

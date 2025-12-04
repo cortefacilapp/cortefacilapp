@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { CheckCircle } from "lucide-react";
 
 const PlanPaymentPix = () => {
   const { planId } = useParams();
@@ -28,7 +29,7 @@ const PlanPaymentPix = () => {
       if (planId) {
         const { data, error } = await supabase
           .from("plans")
-          .select("id,name,price,interval,monthly_credits")
+          .select("id,name,price,interval,monthly_credits,cuts_per_month,description")
           .eq("id", planId)
           .maybeSingle();
         if (!error && data) p = data;
@@ -36,7 +37,7 @@ const PlanPaymentPix = () => {
       if (!p) {
         const { data: list } = await supabase
           .from("plans")
-          .select("id,name,price,interval,monthly_credits,active")
+          .select("id,name,price,interval,monthly_credits,cuts_per_month,description,active")
           .eq("active", true)
           .order("price", { ascending: true });
         const preferred = (list || []).find((x: any) => x.name === "Popular") || (list || [])[0] || null;
@@ -72,7 +73,6 @@ const PlanPaymentPix = () => {
         if (s <= 1) {
           clearInterval(id);
           setModalOpen(true);
-          setTimeout(() => navigate("/dashboard"), 3000);
           return 0;
         }
         return s - 1;
@@ -93,15 +93,6 @@ const PlanPaymentPix = () => {
           async (payload) => {
             const next = (payload.new as { status?: string | null; user_id?: string | null }) || {};
             if (next.status === "approved") {
-              const { data: userData } = await supabase.auth.getUser();
-              const uid = userData?.user?.id;
-              if (uid) {
-                await supabase
-                  .from("user_subscriptions")
-                  .update({ status: "active" })
-                  .eq("user_id", uid)
-                  .eq("plan_id", planIdState || plan.id);
-              }
               setStep(3);
               setModalOpen(true);
               stop = true;
@@ -123,15 +114,6 @@ const PlanPaymentPix = () => {
           .eq("provider_payment_id", paymentKey)
           .maybeSingle();
         if (data?.status === "approved") {
-          const { data: userData } = await supabase.auth.getUser();
-          const uid = userData?.user?.id;
-          if (uid) {
-            await supabase
-              .from("user_subscriptions")
-              .update({ status: "active" })
-              .eq("user_id", uid)
-              .eq("plan_id", planIdState || plan.id);
-          }
           setStep(3);
           setModalOpen(true);
           stop = true;
@@ -211,6 +193,47 @@ const PlanPaymentPix = () => {
     }
   };
 
+  useEffect(() => {
+    const fallbackPlan = async () => {
+      try {
+        if (plan && plan.name) return;
+        const { data: userData } = await supabase.auth.getUser();
+        const uid = userData?.user?.id;
+        let amt = 0;
+        if (paymentKey) {
+          const { data: pay } = await supabase
+            .from("payments")
+            .select("amount,user_id")
+            .eq("provider_payment_id", paymentKey)
+            .maybeSingle();
+          if (pay?.amount) amt = Number(pay.amount);
+        }
+        const { data: plans } = await supabase
+          .from("plans")
+          .select("id,name,price,interval,monthly_credits,cuts_per_month,description,active")
+          .eq("active", true);
+        let match: any = null;
+        const centsToReal = Math.round(amt) / 100;
+        match = (plans || []).find((pl: any) => Number(pl.price) === centsToReal || Math.round(Number(pl.price) * 100) === Math.round(amt));
+        if (!match && uid) {
+          const { data: sub } = await supabase
+            .from("user_subscriptions")
+            .select("plan_id,status,current_period_end")
+            .eq("user_id", uid)
+            .order("current_period_end", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (sub?.plan_id) match = (plans || []).find((pl: any) => String(pl.id) === String(sub.plan_id));
+        }
+        if (match) {
+          setPlan(match);
+          setPlanIdState(match.id);
+        }
+      } catch (_) {}
+    };
+    fallbackPlan();
+  }, [plan?.name, paymentKey]);
+
   if (loading) {
     return (
       <div className="flex min-h-[200px] items-center justify-center">
@@ -234,11 +257,12 @@ const PlanPaymentPix = () => {
       <main className="container mx-auto px-2 sm:px-4 py-6 sm:py-8 pt-20 overflow-x-hidden">
         <Card className="border-2 hover:shadow-lg transition-shadow">
           <CardHeader className="bg-primary/5 rounded-md">
-            <CardTitle>{plan?.name} • R$ {(Number(plan?.price) / 100).toFixed(2)} / {plan?.interval === "year" ? "ano" : "mês"}</CardTitle>
+            <CardTitle>{String(plan?.name || "Plano")} • R$ {(Number(plan?.price) / 100).toFixed(2)} / {plan?.interval === "year" ? "ano" : "mês"}</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-hidden">
             <div className="grid grid-cols-1 gap-4 sm:gap-6 md:gap-8 md:grid-cols-2">
               <div>
+                <div className="text-sm font-medium">Plano: {String(plan?.name || "Plano")}</div>
                 <div className="text-sm text-muted-foreground">Cortes mensais: {plan?.monthly_credits}</div>
                 {(() => {
                   const n = String(plan?.name || "");
@@ -255,6 +279,36 @@ const PlanPaymentPix = () => {
                 })()}
                 <div className="mt-2 text-sm">Use o QR Code ao lado para pagar sua assinatura.</div>
                 <div className="mt-3 text-sm">Tempo restante: {String(Math.floor(secondsLeft / 60)).padStart(2, "0")}:{String(secondsLeft % 60).padStart(2, "0")}</div>
+                <div className="mt-4 rounded-lg border bg-card p-4">
+                  <div className="font-medium">Seu Plano</div>
+                  <div className="mt-1 text-sm font-semibold">{String(plan?.name || "Plano")}</div>
+                  <div className="mt-1 text-sm text-muted-foreground">{String(plan?.description || "Assinatura mensal com benefícios.")}</div>
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="flex items-center gap-2 text-sm">
+                      <CheckCircle className="h-4 w-4 text-primary" />
+                      <span>{plan?.interval === "year" ? "Cobrança anual" : "Cobrança mensal"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <CheckCircle className="h-4 w-4 text-primary" />
+                      <span>{Number(plan?.monthly_credits ?? plan?.cuts_per_month ?? 0)} cortes por mês</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <CheckCircle className="h-4 w-4 text-primary" />
+                      <span>Valor: R$ {(Number(plan?.price) / 100).toFixed(2)}</span>
+                    </div>
+                    {(() => {
+                      const credits = Number(plan?.monthly_credits ?? plan?.cuts_per_month ?? 0) || 0;
+                      const price = Number(plan?.price || 0) / 100;
+                      const perCut = credits > 0 ? (Math.round((price / credits) * 100) / 100).toFixed(2) : null;
+                      return perCut ? (
+                        <div className="flex items-center gap-2 text-sm">
+                          <CheckCircle className="h-4 w-4 text-primary" />
+                          <span>Preço por corte: R$ {perCut}</span>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                </div>
               </div>
               <div className="flex flex-col items-center justify-center w-full">
                 <div className="rounded-xl border bg-card p-4 shadow-lg w-full max-w-[260px] sm:max-w-[300px]">
@@ -305,12 +359,12 @@ const PlanPaymentPix = () => {
             <DialogHeader>
               <DialogTitle>Obrigado por assinar!</DialogTitle>
               <DialogDescription>
-                Pagamento registrado. Você será direcionado para o Dashboard.
+                Pagamento registrado. Aguarde confirmação do administrador para ativar seu plano.
               </DialogDescription>
             </DialogHeader>
             <div className="text-sm text-muted-foreground">Se preferir, clique abaixo.</div>
             <div className="mt-3">
-              <Button className="w-full" onClick={() => navigate("/dashboard")}>Ir para Dashboard</Button>
+              <Button className="w-full" variant="outline" onClick={() => setModalOpen(false)}>Fechar</Button>
             </div>
           </DialogContent>
         </Dialog>

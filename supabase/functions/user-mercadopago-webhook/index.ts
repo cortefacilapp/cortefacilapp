@@ -31,19 +31,36 @@ export default Deno.serve(async (req: Request) => {
     const { data: sub } = await client.from("user_subscriptions").select("id,plan_id,user_id").eq("id", ext).maybeSingle();
     if (sub?.id) {
       let newStatus = "pending";
-      if (status === "approved") newStatus = "active";
+      if (status === "approved") newStatus = "approved";
       else if (["rejected","cancelled","refunded","charged_back"].includes(String(status))) newStatus = "canceled";
-      const now = new Date();
-      const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-      await client.from("user_subscriptions").update({ status: newStatus, current_period_start: newStatus === "active" ? now.toISOString() : null, current_period_end: newStatus === "active" ? end.toISOString() : null }).eq("id", sub.id);
+      await client
+        .from("user_subscriptions")
+        .update({ status: newStatus, current_period_start: null, current_period_end: null })
+        .eq("id", sub.id);
+
       const { data: plan } = await client.from("plans").select("price").eq("id", sub.plan_id).maybeSingle();
-      const gross = Number((plan as any)?.price ?? 0) / 100;
-      const platform_amount = Math.round(gross * 0.2 * 100) / 100;
-      const salon_amount = gross - platform_amount;
-      await client.from("payments").insert({ user_id: sub.user_id, amount: gross, currency: "BRL", status: status === "approved" ? "approved" : "pending", provider: "mercado_pago", provider_payment_id: String(pay.id), platform_amount, salon_amount });
+      const priceCents = Number((plan as any)?.price ?? 0);
+      const platform_amount = Math.round(priceCents * 0.2);
+      const salon_amount = priceCents - platform_amount;
+
+      const { data: existing } = await client
+        .from("payments")
+        .select("id")
+        .eq("provider_payment_id", String(pay.id))
+        .eq("user_id", sub.user_id)
+        .maybeSingle();
+      if (existing?.id) {
+        await client
+          .from("payments")
+          .update({ amount: priceCents, currency: "BRL", status: "pending", provider: "mercado_pago", platform_amount, salon_amount })
+          .eq("id", existing.id);
+      } else {
+        await client
+          .from("payments")
+          .insert({ user_id: sub.user_id, amount: priceCents, currency: "BRL", status: "pending", provider: "mercado_pago", provider_payment_id: String(pay.id), platform_amount, salon_amount });
+      }
     }
     return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
   }
   return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
 });
-

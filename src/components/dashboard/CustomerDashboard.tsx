@@ -388,6 +388,7 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
           <div className="flex items-center gap-2">
             <Scissors className="h-6 w-6 text-primary" />
             <span className="text-xl font-bold">CorteFácil</span>
+            <span className="text-sm text-muted-foreground">{displayName || user.email}</span>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => navigate("/faturas")}>
@@ -485,6 +486,23 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="mt-8 border-2">
+          <CardHeader>
+            <CardTitle>Modo de usar</CardTitle>
+            <CardDescription>Passo a passo para usuário comum</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 text-sm">
+              <p>1. Escolha uma assinatura em <Button variant="link" className="px-0" onClick={() => navigate("/planos")}>Gerenciar Plano</Button>.</p>
+              <p>2. Depois, afilie-se a um salão parceiro. Use <Button variant="link" className="px-0" onClick={() => navigate("/saloes")}>Ver Salões</Button> para encontrar e se afiliar.</p>
+              <p>3. Com a assinatura ativa no ciclo atual, gere um código em "Gerar Código" e apresente no salão para validar o corte.</p>
+              <p>4. Cada validação consome 1 crédito do seu plano.</p>
+              <p>5. Ciclo da assinatura: começa na aprovação/pagamento e termina no fim do período do plano (mensal ou anual). Os créditos renovam a cada ciclo.</p>
+              <p>6. Os códigos expiram em 24 horas. Se o período acabar, renove o pagamento para continuar usando.</p>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Recent Visits */}
         <Card className="mt-8">

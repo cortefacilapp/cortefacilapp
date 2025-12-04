@@ -18,12 +18,15 @@ const Auth = () => {
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const params = new URLSearchParams(location.search);
+  const tabParam = params.get("tab");
   const isSalon = params.get("salao") === "1";
-  const [tab, setTab] = useState(isSalon ? "signup" : "signin");
+  const initialTab = tabParam === "signup" ? "signup" : isSalon ? "signup" : "signin";
+  const [tab, setTab] = useState(initialTab);
   const [fullName, setFullName] = useState("");
   const [cpf, setCpf] = useState("");
   const [address, setAddress] = useState("");
   const [birthdate, setBirthdate] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [resetOpen, setResetOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [newPasswordConfirm, setNewPasswordConfirm] = useState("");
@@ -51,6 +54,16 @@ const Auth = () => {
     if (digits.length <= 2) return digits;
     if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
     return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+  };
+  const formatPhone = (s: string) => {
+    const d = s.replace(/\D/g, "").slice(0, 11);
+    if (!d) return "";
+    if (d.length < 3) return `(${d}`;
+    const dd = d.slice(0, 2);
+    const n = d.slice(2);
+    if (n.length <= 4) return `(${dd}) ${n}`;
+    if (d.length === 11) return `(${dd}) ${n.slice(0, 5)}-${n.slice(5)}`;
+    return `(${dd}) ${n.slice(0, 4)}-${n.slice(4)}`;
   };
 
   useEffect(() => {
@@ -115,6 +128,7 @@ const Auth = () => {
             cpf: cpf || null,
             address: address || null,
             birthdate: toIsoDate(birthdate) || null,
+            phone: whatsapp || null,
           });
         if (isSalon) {
           toast.success("Conta criada com sucesso!");
@@ -277,6 +291,19 @@ const Auth = () => {
                     <div className="space-y-2">
                       <Label htmlFor="signup-address">Endereço</Label>
                       <Input id="signup-address" type="text" placeholder="Rua, número, bairro, cidade/UF" value={address} onChange={(e) => setAddress(e.target.value)} required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-whatsapp">WhatsApp</Label>
+                      <Input
+                        id="signup-whatsapp"
+                        type="text"
+                        placeholder="(99) 99999-9999"
+                        inputMode="numeric"
+                        pattern="^\(\d{2}\)\s?\d{4,5}\-\d{4}$"
+                        maxLength={15}
+                        value={whatsapp}
+                        onChange={(e) => setWhatsapp(formatPhone(e.target.value))}
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="signup-birth">Data de nascimento (dia/mes/ano)</Label>

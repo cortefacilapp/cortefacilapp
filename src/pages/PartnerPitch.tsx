@@ -33,6 +33,9 @@ const PartnerPitch = () => {
             <Button size="lg" variant="outline" asChild className="border-white text-[#1A73E8] hover:bg-white/10">
               <Link to="/salons">Ver salões credenciados</Link>
             </Button>
+            <Button size="lg" variant="outline" asChild className="border-white text-white hover:bg-white/10">
+              <Link to="/auth?tab=signup">Criar conta de usuário</Link>
+            </Button>
           </div>
         </div>
       </section>

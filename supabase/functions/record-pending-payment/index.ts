@@ -74,34 +74,21 @@ export default Deno.serve(async (req: Request) => {
   const platform_amount = Math.round(gross * 0.2 * 100) / 100;
   const salon_amount = Math.max(0, gross - platform_amount);
 
-  // PIX: aprova imediatamente e ativa assinatura
-  if (provider === "pix") {
-    // ensure subscription active
-    if (plan_id) {
-      const now = new Date();
-      const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-      const { data: subRow } = await client
-        .from("user_subscriptions")
-        .select("id,status")
-        .eq("user_id", uid)
-        .eq("plan_id", plan_id)
-        .maybeSingle();
-      if (!subRow) {
-        await client.from("user_subscriptions").insert({ user_id: uid, plan_id, status: "active", current_period_start: now.toISOString(), current_period_end: end.toISOString() });
-      } else {
-        await client.from("user_subscriptions").update({ status: "active", current_period_start: now.toISOString(), current_period_end: end.toISOString() }).eq("id", subRow.id);
-      }
-    }
-    const { data: payApproved, error: payErr } = await client
-      .from("payments")
-      .insert({ user_id: uid, amount: gross, currency, status: "approved", provider, provider_payment_id, platform_amount, salon_amount })
-      .select("id")
+  // Registrar como pendente para qualquer provedor (incluindo PIX); ativação só com aprovação do admin
+  if (plan_id) {
+    const { data: subRow } = await client
+      .from("user_subscriptions")
+      .select("id,status")
+      .eq("user_id", uid)
+      .eq("plan_id", plan_id)
       .maybeSingle();
-    if (payErr) return new Response(JSON.stringify({ error: payErr.message }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } });
-    return new Response(JSON.stringify({ id: payApproved?.id, approved: true }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
+    if (!subRow) {
+      await client.from("user_subscriptions").insert({ user_id: uid, plan_id, status: "pending" });
+    } else if (subRow.status !== "pending") {
+      await client.from("user_subscriptions").update({ status: "pending", current_period_start: null, current_period_end: null }).eq("id", subRow.id);
+    }
   }
 
-  // Outros provedores: registrar pendente
   const { data, error } = await client
     .from("payments")
     .insert({ user_id: uid, amount: Math.round(gross * 100), currency, status: "pending", provider, provider_payment_id })
