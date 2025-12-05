@@ -216,6 +216,11 @@ CREATE POLICY "Users can update their own profile"
   ON public.profiles FOR UPDATE
   USING (auth.uid() = id);
 
+-- Allow users to create their own profiles (needed for client upsert)
+CREATE POLICY "Users can create their own profile"
+  ON public.profiles FOR INSERT
+  WITH CHECK (auth.uid() = id);
+
 CREATE POLICY "Admins can view all profiles"
   ON public.profiles FOR SELECT
   USING (public.has_role(auth.uid(), 'admin'));

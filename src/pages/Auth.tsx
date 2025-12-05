@@ -103,6 +103,13 @@ const Auth = () => {
         password,
         options: {
           emailRedirectTo: `${window.location.origin}${isSalon ? "/signup/salao" : "/dashboard"}`,
+          data: {
+            full_name: fullName || undefined,
+            cpf: cpf || undefined,
+            address: address || undefined,
+            birthdate: toIsoDate(birthdate) || undefined,
+            phone: whatsapp || undefined,
+          },
         },
       });
 
@@ -118,18 +125,20 @@ const Auth = () => {
         }, 1500);
       }
       if (!signInErr && signInData?.user) {
-        await supabase
+        const { error: upErr } = await supabase
           .from("profiles")
-          .upsert({
-            id: signInData.user.id,
-            role: isSalon ? "salon_owner" : "user",
-            name: fullName || signInData.user.user_metadata?.name || "",
-            email,
-            cpf: cpf || null,
-            address: address || null,
-            birthdate: toIsoDate(birthdate) || null,
-            phone: whatsapp || null,
-          });
+          .upsert(
+            {
+              id: signInData.user.id,
+              email,
+              full_name: fullName || signInData.user.user_metadata?.full_name || signInData.user.user_metadata?.name || "",
+              phone: whatsapp || null,
+            },
+            { onConflict: "id" },
+          );
+        if (upErr) {
+          toast.error(upErr.message || "Falha ao salvar perfil");
+        }
         if (isSalon) {
           toast.success("Conta criada com sucesso!");
           navigate("/signup/salao");
