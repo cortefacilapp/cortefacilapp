@@ -147,7 +147,18 @@ const PlanosAdmin = () => {
                         )}
                       </CardTitle>
                       <CardDescription>
-                        R$ {(Number(p.price) / 100).toFixed(2)} / mês
+                        {(() => {
+                          const raw = Math.round(Number(p.price) || 0);
+                          let cents = raw;
+                          for (let i = 0; i < 3; i++) { if (cents >= 100000) cents = Math.round(cents / 100); }
+                          const priceNum = cents / 100;
+                          try {
+                            const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceNum);
+                            return `${brl} / mês`;
+                          } catch {
+                            return `R$ ${priceNum.toFixed(2)} / mês`;
+                          }
+                        })()}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>

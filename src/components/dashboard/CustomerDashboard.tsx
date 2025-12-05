@@ -130,25 +130,35 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
             const pr = p as PlanRow;
             setPlan({ ...pr, status: subRow.status });
             const totalCredits = pr.monthly_credits ?? pr.cuts_per_month ?? null;
-            const { data: uc } = await supabase
-              .from("user_credits")
-              .select("remaining")
-              .eq("user_id", user.id)
-              .eq("plan_id", subRow.plan_id)
-              .eq("period_start", subRow.current_period_start)
-              .maybeSingle();
-            if (uc?.remaining !== undefined && uc?.remaining !== null) {
-              setCredits(Number(uc.remaining));
-            } else if (totalCredits !== null) {
-              const { count } = await supabase
-                .from("codes")
-                .select("id", { count: "exact" })
+            const now = new Date();
+            const ps = subRow.current_period_start ? new Date(String(subRow.current_period_start)) : null;
+            const pe = subRow.current_period_end ? new Date(String(subRow.current_period_end)) : null;
+            const st = String(subRow.status || "").toLowerCase();
+            const activeWindow = ps && pe ? now >= ps && now <= pe : pe ? now <= pe : false;
+            const isActive = activeWindow && ["active","approved","trialing"].includes(st);
+            if (isActive) {
+              const { data: uc } = await supabase
+                .from("user_credits")
+                .select("remaining")
                 .eq("user_id", user.id)
-                .gte("used_at", subRow.current_period_start as any)
-                .lte("used_at", subRow.current_period_end as any)
-                .or("status.eq.used,used.eq.true");
-              const usedCount = Number(count ?? 0);
-              setCredits(Math.max(0, Number(totalCredits) - usedCount));
+                .eq("plan_id", subRow.plan_id)
+                .eq("period_start", subRow.current_period_start)
+                .maybeSingle();
+              if (uc?.remaining !== undefined && uc?.remaining !== null) {
+                setCredits(Number(uc.remaining));
+              } else if (totalCredits !== null) {
+                const { count } = await supabase
+                  .from("codes")
+                  .select("id", { count: "exact" })
+                  .eq("user_id", user.id)
+                  .gte("used_at", subRow.current_period_start as any)
+                  .lte("used_at", subRow.current_period_end as any)
+                  .or("status.eq.used,used.eq.true");
+                const usedCount = Number(count ?? 0);
+                setCredits(Math.max(0, Number(totalCredits) - usedCount));
+              }
+            } else {
+              setCredits(null);
             }
             if (subRow.current_period_end) {
               const nowD = new Date();
@@ -178,20 +188,7 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
             const pr = (p2 as PlanRow | null);
             if (pr) {
               setPlan({ ...pr, status: "approved" });
-              const totalCredits = pr.monthly_credits ?? pr.cuts_per_month ?? null;
-              if (totalCredits !== null) {
-                const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-                const end = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59).toISOString();
-                const { count } = await supabase
-                  .from("codes")
-                  .select("id", { count: "exact" })
-                  .eq("user_id", user.id)
-                  .gte("used_at", start as any)
-                  .lte("used_at", end as any)
-                  .or("status.eq.used,used.eq.true");
-                const usedCount = Number(count ?? 0);
-                setCredits(Math.max(0, Number(totalCredits) - usedCount));
-              }
+              setCredits(null);
               if (last?.created_at) {
                 const startD = new Date(String(last.created_at));
                 const endD = new Date(startD.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -407,7 +404,7 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
         <div className="mb-8">
           <h1 className="mb-2 text-3xl font-bold flex items-center gap-3">
             <span>Olá, {displayName || user.email}!</span>
-            {credits !== null && (
+            {credits !== null && plan && (plan.status === "active" || plan.status === "approved") && (
               <span className="inline-flex items-center rounded px-2 py-1 text-xs bg-primary text-primary-foreground">
                 {credits} créditos
               </span>
@@ -415,9 +412,15 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
           </h1>
           <p className="text-muted-foreground">Gerencie seus cortes e assinatura</p>
           <div className="mt-2 text-sm">
-            {plan ? (
+            {plan && (plan.status === "active" || plan.status === "approved") ? (
               <span className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">
-                Plano ativo: {String(plan?.name || "")} • {(Number(plan?.price || 0) / 100).toFixed(2)}/mês{credits !== null ? ` • créditos: ${credits}` : ""}
+                {(() => {
+                  const cents = normalizeCents(toCents((plan as any)?.price));
+                  const priceNum = cents / 100;
+                  let formatted = `R$ ${priceNum.toFixed(2)}`;
+                  try { formatted = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceNum); } catch {}
+                  return `Plano ativo: ${String(plan?.name || "")} • ${formatted}/mês${credits !== null ? ` • créditos: ${credits}` : ""}`;
+                })()}
               </span>
             ) : (
               <span className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">Sem plano ativo</span>
@@ -430,9 +433,15 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
           <Card className="border-2">
           <CardHeader>
             <CardTitle className="text-primary">Meu Plano</CardTitle>
-            {plan ? (
+            {plan && (plan.status === "active" || plan.status === "approved") ? (
               <CardDescription>
-                Plano: {String(plan.name)} - R$ {(Number(plan.price) / 100).toFixed(2)}/{plan.interval === "year" ? "ano" : "mês"}
+                {(() => {
+                  const cents = normalizeCents(toCents((plan as any)?.price));
+                  const priceNum = cents / 100;
+                  let formatted = `R$ ${priceNum.toFixed(2)}`;
+                  try { formatted = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceNum); } catch {}
+                  return `Plano: ${String(plan!.name)} - ${formatted}/${plan!.interval === "year" ? "ano" : "mês"}`;
+                })()}
               </CardDescription>
             ) : null}
             {affiliationName && (
@@ -565,3 +574,16 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
 };
 
 export default CustomerDashboard;
+  const toCents = (v: unknown) => {
+    const s = String(v ?? "0").replace(/,/g, ".");
+    const n = Number(s);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    const hasDot = s.includes(".");
+    const fractionalNonZero = hasDot && !/\.0+$/.test(s);
+    return fractionalNonZero ? Math.round(n * 100) : Math.round(n);
+  };
+  const normalizeCents = (c: number) => {
+    let x = Math.round(Number(c) || 0);
+    for (let i = 0; i < 3; i++) { if (x >= 100000) x = Math.round(x / 100); }
+    return x;
+  };

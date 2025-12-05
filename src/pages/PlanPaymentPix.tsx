@@ -8,6 +8,25 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { CheckCircle } from "lucide-react";
 
+const toCents = (v: unknown) => {
+  const s = String(v ?? "0").replace(/,/g, ".");
+  const n = Number(s);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const hasDot = s.includes(".");
+  const fractionalNonZero = hasDot && !/\.0+$/.test(s);
+  return fractionalNonZero ? Math.round(n * 100) : Math.round(n);
+};
+
+const normalizeCents = (c: number) => {
+  let x = Math.round(Number(c) || 0);
+  for (let i = 0; i < 3; i++) { if (x >= 100000) x = Math.round(x / 100); }
+  return x;
+};
+
+const formatBRL = (reais: number) => {
+  try { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(reais); } catch { return `R$ ${reais.toFixed(2)}`; }
+};
+
 const PlanPaymentPix = () => {
   const { planId } = useParams();
   const navigate = useNavigate();
@@ -51,7 +70,8 @@ const PlanPaymentPix = () => {
       setPlanIdState(p.id);
       setPlan(p);
       try {
-        await generateAsaasPix(p.id, Number(p.price || 0), String(p.name || "Plano"));
+        const centsNorm = normalizeCents(toCents(p.price));
+        await generateAsaasPix(p.id, centsNorm, String(p.name || "Plano"));
         setErr("");
       } catch (e: any) {
         const m = e?.message || "Erro ao gerar PIX";
@@ -72,14 +92,24 @@ const PlanPaymentPix = () => {
       setSecondsLeft((s) => {
         if (s <= 1) {
           clearInterval(id);
-          setModalOpen(true);
           return 0;
         }
         return s - 1;
       });
     }, 1000);
     return () => clearInterval(id);
-  }, [pixCode]);
+  }, [pixCode, navigate]);
+
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    if (secondsLeft === 0) {
+      setModalOpen(true);
+      t = setTimeout(() => {
+        navigate("/dashboard");
+      }, 2500);
+    }
+    return () => { if (t) clearTimeout(t); };
+  }, [secondsLeft, navigate]);
 
   useEffect(() => {
     if (!paymentKey || !(planIdState || plan?.id)) return;
@@ -131,7 +161,7 @@ const PlanPaymentPix = () => {
 
   const payViaCheckout = async () => {
     try {
-      const amount = Number(plan?.price) / 100;
+      const amount = normalizeCents(toCents((plan as any)?.price)) / 100;
       const text = encodeURIComponent(
         `Olá! Envio comprovante do pagamento do plano ${plan?.name} no valor R$ ${amount.toFixed(2)}. Chave PIX: d66c563a-71b6-4e2b-9292-8c71d218eb31`
       );
@@ -145,7 +175,8 @@ const PlanPaymentPix = () => {
     try {
       const pid = targetPlanId || planIdState || plan?.id;
       if (!pid) { toast.error("Plano inválido"); return; }
-      const cents = typeof priceCentsOverride === "number" ? priceCentsOverride : Number(plan?.price || 0);
+      const centsRaw = typeof priceCentsOverride === "number" ? priceCentsOverride : Number(plan?.price || 0);
+      const cents = normalizeCents(centsRaw);
       const amount = Math.round(cents) / 100;
       const providerId = `pix_${pid}_${Date.now()}`;
       const code = generatePixCopyPaste({
@@ -163,12 +194,13 @@ const PlanPaymentPix = () => {
         const { data: userData } = await supabase.auth.getUser();
         const uid = userData?.user?.id;
         if (uid) {
-          await supabase.from("payments").insert({ user_id: uid, amount: Number(plan?.price || 0), currency: "BRL", status: "pending", provider: "pix", provider_payment_id: providerId });
+          await supabase.from("payments").insert({ user_id: uid, amount: cents, currency: "BRL", status: "pending", provider: "pix", provider_payment_id: providerId });
           await supabase.from("user_subscriptions").insert({ user_id: uid, plan_id: pid, status: "pending", current_period_start: new Date().toISOString(), current_period_end: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
         }
       } catch (_) {}
     } catch (e: any) {
-      const cents2 = typeof priceCentsOverride === "number" ? priceCentsOverride : Number(plan?.price || 0);
+      const centsRaw2 = typeof priceCentsOverride === "number" ? priceCentsOverride : Number(plan?.price || 0);
+      const cents2 = normalizeCents(centsRaw2);
       const amount = Math.round(cents2) / 100;
       const providerId = `pix_${targetPlanId || planIdState || plan?.id}_${Date.now()}`;
       const code = generatePixCopyPaste({
@@ -186,7 +218,7 @@ const PlanPaymentPix = () => {
         const { data: userData } = await supabase.auth.getUser();
         const uid = userData?.user?.id;
         if (uid) {
-          await supabase.from("payments").insert({ user_id: uid, amount: Number(plan?.price || 0), currency: "BRL", status: "pending", provider: "pix", provider_payment_id: providerId });
+          await supabase.from("payments").insert({ user_id: uid, amount: cents2, currency: "BRL", status: "pending", provider: "pix", provider_payment_id: providerId });
           await supabase.from("user_subscriptions").insert({ user_id: uid, plan_id: targetPlanId || planIdState || plan?.id, status: "pending", current_period_start: new Date().toISOString(), current_period_end: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
         }
       } catch (_) {}
@@ -257,7 +289,13 @@ const PlanPaymentPix = () => {
       <main className="container mx-auto px-2 sm:px-4 py-6 sm:py-8 pt-20 overflow-x-hidden">
         <Card className="border-2 hover:shadow-lg transition-shadow">
           <CardHeader className="bg-primary/5 rounded-md">
-            <CardTitle>{String(plan?.name || "Plano")} • R$ {(Number(plan?.price) / 100).toFixed(2)} / {plan?.interval === "year" ? "ano" : "mês"}</CardTitle>
+            <CardTitle>{(() => {
+              const cents = normalizeCents(toCents((plan as any)?.price));
+              const price = cents / 100;
+              const brl = formatBRL(price);
+              const interval = plan?.interval === "year" ? "ano" : "mês";
+              return `${String(plan?.name || "Plano")} • ${brl} / ${interval}`;
+            })()}</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-hidden">
             <div className="grid grid-cols-1 gap-4 sm:gap-6 md:gap-8 md:grid-cols-2">
@@ -294,16 +332,16 @@ const PlanPaymentPix = () => {
                     </div>
                     <div className="flex items-center gap-2 text-sm">
                       <CheckCircle className="h-4 w-4 text-primary" />
-                      <span>Valor: R$ {(Number(plan?.price) / 100).toFixed(2)}</span>
+                      <span>{(() => { const cents = normalizeCents(toCents((plan as any)?.price)); const price = cents / 100; return `Valor: ${formatBRL(price)}`; })()}</span>
                     </div>
                     {(() => {
                       const credits = Number(plan?.monthly_credits ?? plan?.cuts_per_month ?? 0) || 0;
-                      const price = Number(plan?.price || 0) / 100;
+                      const price = normalizeCents(toCents((plan as any)?.price)) / 100;
                       const perCut = credits > 0 ? (Math.round((price / credits) * 100) / 100).toFixed(2) : null;
                       return perCut ? (
                         <div className="flex items-center gap-2 text-sm">
                           <CheckCircle className="h-4 w-4 text-primary" />
-                          <span>Preço por corte: R$ {perCut}</span>
+                          <span>{`Preço por corte: ${formatBRL(Number(perCut))}`}</span>
                         </div>
                       ) : null;
                     })()}
@@ -359,7 +397,7 @@ const PlanPaymentPix = () => {
             <DialogHeader>
               <DialogTitle>Obrigado por assinar!</DialogTitle>
               <DialogDescription>
-                Pagamento registrado. Aguarde confirmação do administrador para ativar seu plano.
+                Pagamento registrado. A ativação pode levar até 24 horas após análise do administrador. Você será redirecionado ao Dashboard em instantes.
               </DialogDescription>
             </DialogHeader>
             <div className="text-sm text-muted-foreground">Se preferir, clique abaixo.</div>

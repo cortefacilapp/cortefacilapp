@@ -34,6 +34,33 @@ type PaymentRow = {
 
 type PlanInfo = { id: string; name: string; price: number; interval: string | null; monthly_credits: number | null };
 
+const toCents = (v: unknown) => {
+  const s = String(v ?? "0").replace(/,/g, ".");
+  const n = Number(s);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const hasDot = s.includes(".");
+  const fractionalNonZero = hasDot && !/\.0+$/.test(s);
+  return fractionalNonZero ? Math.round(n * 100) : Math.round(n);
+};
+
+const normalizeCents = (c: number) => {
+  let x = Math.round(Number(c) || 0);
+  for (let i = 0; i < 3; i++) { if (x >= 100000) x = Math.round(x / 100); }
+  return x;
+};
+
+const priceCentsFor = (r: Row) => {
+  const base = Math.round(Number(r.amount) || 0);
+  if (base > 0) return base;
+  const planRaw = r.plan?.price ? toCents(r.plan!.price) : 0;
+  return normalizeCents(planRaw);
+};
+
+const formatBRLFromCents = (cents: number) => {
+  const num = (Math.round(Number(cents) || 0) / 100);
+  try { return `${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num)} BRL`; } catch { return `R$ ${num.toFixed(2)} BRL`; }
+};
+
 const FaturasPendentes = () => {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<Row[]>([]);
@@ -156,18 +183,19 @@ const FaturasPendentes = () => {
           const byId = new Map<string, any>();
           (plansList || []).forEach((pl: any) => byId.set(String(pl.id), pl));
           const byAmount = (plansList || []).find((pl: any) => {
-            const pc = Number(pl.price || 0);
-            const amt = Number(p.amount || 0);
-            return pc === Math.round(amt * 100) || Math.round(pc / 100) === Math.round(amt);
+            const pc = toCents(pl.price);
+            const amt = Math.round(Number(p.amount || 0));
+            return pc === amt;
           }) || null;
           // Try to find subscription whose plan price matches payment amount
           let chosenSub: any = null;
           if (Array.isArray(subs)) {
             for (const s of subs) {
               const pl = byId.get(String(s.plan_id));
-              if (pl && Number(pl.price) === Number(p.amount)) { chosenSub = s; break; }
+              const pc = pl ? toCents(pl.price) : 0;
+              const amt = Math.round(Number(p.amount || 0));
+              if (pl && pc === amt) { chosenSub = s; break; }
             }
-            // fallback to latest if none matched
             if (!chosenSub && subs.length) chosenSub = subs[0];
           }
           let plan: { id: string; name: string; price: number; interval?: string | null; monthly_credits?: number | null } | null = null;
@@ -225,7 +253,12 @@ const FaturasPendentes = () => {
   }, [query, rows]);
 
   const pendingCount = rows.length;
-  const pendingTotal = useMemo(() => rows.reduce((acc, r) => acc + Number(r.amount || 0), 0), [rows]);
+  const pendingTotal = useMemo(() => rows.reduce((acc, r) => {
+    const base = Number(r.amount || 0);
+    if (base > 0) return acc + base;
+    const planPrice = r.plan?.price ? Number(r.plan!.price) : 0;
+    return acc + (planPrice > 0 ? planPrice : 0);
+  }, 0), [rows]);
   const providersDistinct = useMemo(() => new Set(rows.map((r) => String(r.provider || "").toLowerCase()).filter(Boolean)).size, [rows]);
 
   return (
@@ -269,7 +302,7 @@ const FaturasPendentes = () => {
                           <CreditCard className="h-4 w-4" />
                           {r.plan?.name || (r.provider?.toUpperCase() || "Pagamento")}
                         </span>
-                        <span className="text-primary">R$ {(Number(r.amount) / 100).toFixed(2)}</span>
+                        <span className="text-primary">{formatBRLFromCents(priceCentsFor(r))}</span>
                       </CardTitle>
                       <CardDescription className="flex items-center gap-2">
                         <CalendarDays className="h-3 w-3" />
@@ -286,10 +319,10 @@ const FaturasPendentes = () => {
                       {r.plan?.name ? (
                         <div className="mt-2 text-xs text-muted-foreground">
                           {(() => {
-                            const price = (Number(r.plan!.price) / 100).toFixed(2);
+                            const price = formatBRLFromCents(priceCentsFor(r)).replace(/\s*BRL$/, "");
                             const intervalLabel = r.plan!.interval === "year" ? "ano" : "mês";
                             const credits = r.plan!.monthly_credits ? `${r.plan!.monthly_credits} cortes/mês` : "";
-                            return `Plano: ${r.plan!.name} • R$ ${price}/${intervalLabel}${credits ? " • " + credits : ""}`;
+                            return `Plano: ${r.plan!.name} • ${price}/${intervalLabel}${credits ? " • " + credits : ""}`;
                           })()}
                         </div>
                       ) : null}
@@ -324,7 +357,11 @@ const FaturasPendentes = () => {
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Valor total</span>
-                  <span className="font-medium">R$ {(pendingTotal / 100).toFixed(2)}</span>
+                  <span className="font-medium">{(() => {
+                    const totalCents = rows.reduce((acc, r) => acc + priceCentsFor(r), 0);
+                    const num = totalCents / 100;
+                    try { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num); } catch { return `R$ ${num.toFixed(2)}`; }
+                  })()}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Provedores distintos</span>
@@ -334,7 +371,12 @@ const FaturasPendentes = () => {
               <div className="mt-4 rounded-xl border p-4 bg-muted/40 flex items-center justify-between">
                 <div>
                   <div className="text-xs text-muted-foreground">Estimativa repasse salões</div>
-                  <div className="text-2xl font-bold">R$ {((pendingTotal * 0.8) / 100).toFixed(2)}</div>
+                  <div className="text-2xl font-bold">{(() => {
+                    const totalCents = rows.reduce((acc, r) => acc + priceCentsFor(r), 0);
+                    const salonCents = Math.round(totalCents * 0.8);
+                    const num = salonCents / 100;
+                    try { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(num); } catch { return `R$ ${num.toFixed(2)}`; }
+                  })()}</div>
                 </div>
                 <DollarSign className="h-6 w-6 text-primary" />
               </div>

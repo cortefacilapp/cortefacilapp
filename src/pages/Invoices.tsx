@@ -8,8 +8,8 @@ import { toast } from "sonner";
 import { Home } from "lucide-react";
 
 type PaymentRow = { id: string; amount: number; currency: string; status: string; created_at: string; provider: string | null; provider_payment_id: string | null };
-type SubscriptionRow = { id: string; plan_id: string | null; status: string; current_period_end: string | null };
-type PlanRow = { name: string; price: number; interval: string | null; monthly_credits: number | null };
+type SubscriptionRow = { id: string; plan_id: string | null; status: string; current_period_start?: string | null; current_period_end: string | null };
+type PlanRow = { id?: string; name: string; price: number; interval: string | null; monthly_credits: number | null; description?: string | null };
 
 const Invoices = () => {
   const [loading, setLoading] = useState(true);
@@ -19,6 +19,7 @@ const Invoices = () => {
   const [planName, setPlanName] = useState<string | null>(null);
   const [planPriceCents, setPlanPriceCents] = useState<number | null>(null);
   const [planInterval, setPlanInterval] = useState<string | null>(null);
+  const [planCredits, setPlanCredits] = useState<number | null>(null);
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const navigate = useNavigate();
 
@@ -28,11 +29,12 @@ const Invoices = () => {
       const { data: userData } = await supabase.auth.getUser();
       const uid = userData?.user?.id;
       if (!uid) { setLoading(false); return; }
+      let subPlanPriceLocal: number = 0;
       const { data: sub } = await supabase
         .from("user_subscriptions")
-        .select("id, plan_id, status, current_period_end")
+        .select("id, plan_id, status, current_period_start, current_period_end")
         .eq("user_id", uid)
-        .in("status", ["active", "approved", "trialing"]) 
+        .in("status", ["active", "approved", "trialing", "pending"]) 
         .order("current_period_end", { ascending: false })
         .maybeSingle();
       const subRow = (sub as SubscriptionRow | null) || null;
@@ -40,21 +42,24 @@ const Invoices = () => {
       if (subRow?.plan_id) {
         const { data: plan } = await supabase
           .from("plans")
-          .select("name,price,interval,monthly_credits")
+          .select("name,price,interval,monthly_credits,description")
           .eq("id", subRow.plan_id)
           .maybeSingle();
         const pr = (plan as PlanRow | null);
         setPlanName(pr?.name || null);
-        setPlanPriceCents(typeof pr?.price === "number" ? pr?.price : null);
+        setPlanPriceCents(toCents((pr as any)?.price));
         setPlanInterval(pr?.interval || null);
+        setPlanCredits(typeof pr?.monthly_credits === "number" ? Number(pr?.monthly_credits) : null);
+        subPlanPriceLocal = toCents((pr as any)?.price);
       } else {
         setPlanName(null);
         setPlanPriceCents(null);
         setPlanInterval(null);
+        setPlanCredits(null);
       }
       const { data: plansActive } = await supabase
         .from("plans")
-        .select("name,price,interval,monthly_credits")
+        .select("id,name,price,interval,monthly_credits,description")
         .eq("active", true);
       setPlans(((plansActive || []) as PlanRow[]));
       const { data: pays } = await supabase
@@ -63,7 +68,24 @@ const Invoices = () => {
         .eq("user_id", uid)
         .order("created_at", { ascending: false })
         .limit(6);
-      setPayments(((pays || []) as PaymentRow[]));
+      const list = ((pays || []) as PaymentRow[]);
+      const hasPendingPayment = list.some((x) => String(x.status || "").toLowerCase() === "pending");
+      const isSubPending = subRow && String(subRow.status || "").toLowerCase() === "pending";
+      if (!hasPendingPayment && isSubPending) {
+        const cents = subPlanPriceLocal || (typeof planPriceCents === "number" ? Number(planPriceCents) : 0);
+        const synthetic: PaymentRow = {
+          id: "subscription_pending",
+          amount: cents,
+          currency: "BRL",
+          status: "pending",
+          created_at: new Date().toISOString(),
+          provider: null,
+          provider_payment_id: "subscription_pending",
+        };
+        setPayments([synthetic, ...list]);
+      } else {
+        setPayments(list);
+      }
 
       const { data: paysPaid } = await supabase
         .from("payments")
@@ -95,7 +117,7 @@ const Invoices = () => {
               if (next.plan_id) {
                 supabase
                   .from("plans")
-                  .select("name,price,interval,monthly_credits")
+                  .select("name,price,interval,monthly_credits,description")
                   .eq("id", next.plan_id)
                   .maybeSingle()
                   .then(({ data }) => {
@@ -103,11 +125,13 @@ const Invoices = () => {
                     setPlanName(pr?.name || null);
                     setPlanPriceCents(typeof pr?.price === "number" ? pr?.price : null);
                     setPlanInterval(pr?.interval || null);
+                    setPlanCredits(typeof pr?.monthly_credits === "number" ? Number(pr?.monthly_credits) : null);
                   });
               } else {
                 setPlanName(null);
                 setPlanPriceCents(null);
                 setPlanInterval(null);
+                setPlanCredits(null);
               }
             }
           },
@@ -122,7 +146,7 @@ const Invoices = () => {
               if (next.plan_id) {
                 supabase
                   .from("plans")
-                  .select("name,price,interval,monthly_credits")
+                  .select("name,price,interval,monthly_credits,description")
                   .eq("id", next.plan_id)
                   .maybeSingle()
                   .then(({ data }) => {
@@ -130,11 +154,13 @@ const Invoices = () => {
                     setPlanName(pr?.name || null);
                     setPlanPriceCents(typeof pr?.price === "number" ? pr?.price : null);
                     setPlanInterval(pr?.interval || null);
+                    setPlanCredits(typeof pr?.monthly_credits === "number" ? Number(pr?.monthly_credits) : null);
                   });
               } else {
                 setPlanName(null);
                 setPlanPriceCents(null);
                 setPlanInterval(null);
+                setPlanCredits(null);
               }
             }
           },
@@ -150,7 +176,10 @@ const Invoices = () => {
   const payNow = async () => {
     if (!subscription?.plan_id) { toast.error("Assine um plano primeiro"); return; }
     try {
-      const { data, error } = await supabase.functions.invoke("user-create-checkout", { body: { plan_id: subscription.plan_id } });
+      const byId = subscription?.plan_id && Array.isArray(plans) ? plans.find((pl) => String(pl.id) === String(subscription!.plan_id)) : null;
+      const priceCents = typeof planPriceCents === "number" ? Number(planPriceCents) : (byId?.price ? Number(byId.price) : 0);
+      const amount = Math.round(((priceCents / 100) * 100)) / 100;
+      const { data, error } = await supabase.functions.invoke("user-create-checkout", { body: { subscription_id: subscription.id, plan_name: planName || byId?.name || "Assinatura", amount } });
       if (error) throw error;
       const init = data?.init_point;
       if (!init) throw new Error("Falha ao iniciar checkout");
@@ -176,32 +205,56 @@ const Invoices = () => {
   };
 
   const resolvePlanName = (amountCents: number) => {
-    if (!Array.isArray(plans) || plans.length === 0) return planName || null;
+    const fallbackPlans: PlanRow[] = [
+      { name: "Social", price: 5999, interval: "month", monthly_credits: 2, description: "2 cortes/mês" },
+      { name: "Popular", price: 7999, interval: "month", monthly_credits: 3, description: "3 cortes/mês" },
+      { name: "Premium", price: 9999, interval: "month", monthly_credits: 4, description: "corte profissional" },
+    ];
+    if (!Array.isArray(plans) || plans.length === 0) {
+      const cents = Math.round(Number(amountCents) || 0);
+      const byFallback = fallbackPlans.find((pl) => Math.round(Number(pl.price) || 0) === cents);
+      return byFallback?.name || planName || null;
+    }
     const cents = Math.round(Number(amountCents) || 0);
-    const byExactCents = plans.find((pl) => Math.round(Number(pl.price) || 0) === cents);
-    if (byExactCents) return byExactCents.name;
-    const byReal = plans.find((pl) => {
-      const pr = Number(pl.price) || 0;
-      return Math.round(pr * 100) === cents || Math.round(pr) === Math.round(cents / 100);
+    const byExactCents = plans.find((pl) => {
+      let c = toCents((pl as any)?.price);
+      for (let i = 0; i < 3; i++) { if (c >= 100000) c = Math.round(c / 100); }
+      return c === cents;
     });
-    return byReal?.name || planName || null;
+    if (byExactCents) return byExactCents.name;
+    const byReal = plans.find((pl) => toCents((pl as any)?.price) === cents);
+    if (byReal?.name) return byReal.name;
+    const byFallback = fallbackPlans.find((pl) => Math.round(Number(pl.price) || 0) === cents);
+    return byFallback?.name || planName || null;
   };
 
   const planTitleFor = (amountCents: number) => {
     const cents = Math.round(Number(amountCents) || 0);
     let match: PlanRow | null = null;
+    const fallbackPlans: PlanRow[] = [
+      { name: "Social", price: 5999, interval: "month", monthly_credits: 2, description: "2 cortes/mês" },
+      { name: "Popular", price: 7999, interval: "month", monthly_credits: 3, description: "3 cortes/mês" },
+      { name: "Premium", price: 9999, interval: "month", monthly_credits: 4, description: "corte profissional" },
+    ];
     if (Array.isArray(plans) && plans.length) {
-      match = plans.find((pl) => Math.round(Number(pl.price) || 0) === cents) || null;
-      if (!match) {
+      if (cents > 0) {
         match = plans.find((pl) => {
-          const pr = Number(pl.price) || 0;
-          return Math.round(pr * 100) === cents || Math.round(pr) === Math.round(cents / 100);
+          let c = toCents((pl as any)?.price);
+          for (let i = 0; i < 3; i++) { if (c >= 100000) c = Math.round(c / 100); }
+          return c === cents;
         }) || null;
       }
+      if (!match && subscription?.plan_id) {
+        match = plans.find((pl) => String(pl.id) === String(subscription.plan_id)) || null;
+      }
+    }
+    if (!match && cents > 0) {
+      match = fallbackPlans.find((pl) => Math.round(Number(pl.price) || 0) === cents) || null;
     }
     const name = match?.name || planName || "Plano";
     const intervalLabel = (match?.interval || planInterval) === "year" ? "ano" : "mês";
     const creditsLabel = typeof match?.monthly_credits === "number" ? ` • ${match?.monthly_credits} cortes/mês` : "";
+    const descLabel = match?.description ? ` • ${String(match.description)}` : "";
     const note = name === "Social"
       ? " • corte simples degradê"
       : name === "Popular"
@@ -209,7 +262,34 @@ const Invoices = () => {
       : name === "Premium"
       ? " • corte profissional + sobrancelha + barba"
       : "";
-    return `${name} • ${intervalLabel}${creditsLabel}${note}`;
+    return `${name} • ${intervalLabel}${creditsLabel}${descLabel || note}`;
+  };
+
+  const effectiveAmountCents = (p: PaymentRow) => {
+    const amt = Number(p.amount || 0);
+    if (amt > 0) return amt;
+    if (typeof planPriceCents === "number") return Number(planPriceCents);
+    if (subscription?.plan_id && Array.isArray(plans) && plans.length) {
+      const pr = plans.find((x) => String(x.id) === String(subscription.plan_id));
+      if (pr) {
+        let c = toCents((pr as any)?.price);
+        for (let i = 0; i < 3; i++) { if (c >= 100000) c = Math.round(c / 100); }
+        return c;
+      }
+    }
+    return 0;
+  };
+
+  const isActiveSubscription = (s: SubscriptionRow | null) => {
+    if (!s) return false;
+    const st = String(s.status || "").toLowerCase();
+    if (!["approved", "active", "trialing"].includes(st)) return false;
+    const now = new Date();
+    const start = s.current_period_start ? new Date(String(s.current_period_start)) : null;
+    const end = s.current_period_end ? new Date(String(s.current_period_end)) : null;
+    if (start && end) return now >= start && now <= end;
+    if (end) return now <= end;
+    return false;
   };
 
   if (loading) {
@@ -242,23 +322,24 @@ const Invoices = () => {
         <Card className="mb-6 border-2 hover:shadow-lg transition-shadow">
           <CardHeader className="bg-primary/5 rounded-md">
             <CardTitle>Assinatura</CardTitle>
-            {planName && (
-              <CardDescription>
-                {(() => {
-                  const intervalLabel = planInterval === "year" ? "ano" : "mês";
-                  if (typeof planPriceCents === "number") {
-                    try {
-                      const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((Number(planPriceCents) || 0) / 100);
-                      return `Plano: ${planName} • Valor: ${brl}/${intervalLabel}`;
-                    } catch {
-                      const v = (Number(planPriceCents) || 0) / 100;
-                      return `Plano: ${planName} • Valor: R$ ${v.toFixed(2).replace('.', ',')}/${intervalLabel}`;
-                    }
+            <CardDescription>
+              {(() => {
+                const byId = subscription?.plan_id && Array.isArray(plans) ? plans.find((pl) => String(pl.id) === String(subscription!.plan_id)) : null;
+                const headerName = planName || byId?.name || (typeof planPriceCents === "number" ? resolvePlanName(planPriceCents) : null) || "Plano";
+                const priceCents = typeof planPriceCents === "number" ? Number(planPriceCents) : (byId?.price ? Number(byId.price) : 0);
+                const intervalLabel = (planInterval || byId?.interval) === "year" ? "ano" : "mês";
+                if (priceCents > 0) {
+                  try {
+                    const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((priceCents || 0) / 100);
+                    return `Plano: ${headerName} • Valor: ${brl}/${intervalLabel}`;
+                  } catch {
+                    const v = (priceCents || 0) / 100;
+                    return `Plano: ${headerName} • Valor: R$ ${v.toFixed(2).replace('.', ',')}/${intervalLabel}`;
                   }
-                  return `Plano: ${planName}`;
-                })()}
-              </CardDescription>
-            )}
+                }
+                return `Plano: ${headerName} • ${intervalLabel}`;
+              })()}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
@@ -267,15 +348,21 @@ const Invoices = () => {
                   <>
                     <span
                       className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${
-                        ["approved", "active", "trialing"].includes(subscription.status)
+                        ["approved", "active", "trialing"].includes(String(subscription.status || "").toLowerCase())
                           ? "bg-green-100 text-green-700"
-                          : subscription.status === "pending"
+                          : String(subscription.status || "").toLowerCase() === "pending"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-gray-100 text-gray-700"
                       }`}
                     >
-                      {subscription.status === "active" ? "Assinatura ativa" : subscription.status}
+                      {String(subscription.status || "").toLowerCase() === "active" ? "Assinatura ativa" : String(subscription.status || "")}
                     </span>
+                    {(() => {
+                      const showCredits = isActiveSubscription(subscription) && typeof planCredits === "number" && planCredits > 0;
+                      return showCredits ? (
+                        <span className="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700">{planCredits} cortes/mês</span>
+                      ) : null;
+                    })()}
                     {subscription.current_period_end && (
                       <span className="text-xs">Vence: {new Date(subscription.current_period_end).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span>
                     )}
@@ -295,18 +382,19 @@ const Invoices = () => {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {payments.map((p) => (
+              {payments.slice(0, 3).map((p) => (
                 <div key={p.id} className="rounded-md border-2 bg-card p-4 text-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between">
-                    <div className="font-medium">{planTitleFor(p.amount)}</div>
+                    <div className="font-medium">{planTitleFor(effectiveAmountCents(p))}</div>
                   </div>
                   <div className="mt-2">
                     {(() => {
                       try {
-                        const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((Number(p.amount) || 0) / 100);
+                        const amt = effectiveAmountCents(p);
+                    const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((amt || 0) / 100);
                         return <div className="font-semibold">{brl} <span className="text-xs text-muted-foreground">{p.currency}</span></div>;
                       } catch {
-                        const v = (Number(p.amount) || 0) / 100;
+                        const v = (effectiveAmountCents(p) || 0) / 100;
                         return <div className="font-semibold">R$ {v.toFixed(2).replace('.', ',')} <span className="text-xs text-muted-foreground">{p.currency}</span></div>;
                       }
                     })()}
@@ -347,15 +435,16 @@ const Invoices = () => {
               {paidPayments.map((p) => (
                 <div key={p.id} className="rounded-md border-2 bg-card p-4 text-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between">
-                    <div className="font-medium">{planTitleFor(p.amount)}</div>
+                    <div className="font-medium">{planTitleFor(effectiveAmountCents(p))}</div>
                   </div>
                   <div className="mt-2">
                     {(() => {
                       try {
-                        const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((Number(p.amount) || 0) / 100);
+                        const amt = effectiveAmountCents(p);
+                        const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((amt || 0) / 100);
                         return <div className="font-semibold">{brl} <span className="text-xs text-muted-foreground">{p.currency}</span></div>;
                       } catch {
-                        const v = (Number(p.amount) || 0) / 100;
+                        const v = (effectiveAmountCents(p) || 0) / 100;
                         return <div className="font-semibold">R$ {v.toFixed(2).replace('.', ',')} <span className="text-xs text-muted-foreground">{p.currency}</span></div>;
                       }
                     })()}
@@ -379,3 +468,11 @@ const Invoices = () => {
 };
 
 export default Invoices;
+  const toCents = (v: unknown) => {
+    const s = String(v ?? "0").replace(/,/g, ".");
+    const n = Number(s);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    const hasDot = s.includes(".");
+    const fractionalNonZero = hasDot && !/\.0+$/.test(s);
+    return fractionalNonZero ? Math.round(n * 100) : Math.round(n);
+  };

@@ -12,6 +12,21 @@ const PlansSelect = () => {
   const [plans, setPlans] = useState<any[]>([]);
   const navigate = useNavigate();
   const [signingOut, setSigningOut] = useState(false);
+  const toCents = (v: unknown) => {
+    const s = String(v ?? "0").replace(/,/g, ".");
+    const n = Number(s);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    const hasDot = s.includes(".");
+    const fractionalNonZero = hasDot && !/\.0+$/.test(s);
+    return fractionalNonZero ? Math.round(n * 100) : Math.round(n);
+  };
+  const normalizeCents = (c: number) => {
+    let x = Math.round(Number(c) || 0);
+    for (let i = 0; i < 3; i++) {
+      if (x >= 100000) x = Math.round(x / 100);
+    }
+    return x;
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -57,7 +72,28 @@ const PlansSelect = () => {
         .select("id")
         .single();
       if (subErr || !subIns?.id) throw subErr || new Error("Falha ao criar assinatura");
-      const amount = Math.round(Number(pr?.price || 0) / 100 * 100) / 100; // reais
+      const amount = Math.round((normalizeCents(toCents((pr as any)?.price)) / 100) * 100) / 100; // reais
+      if (useEdge) {
+        try {
+          await supabase.functions.invoke("record-pending-payment", {
+            body: { plan_id: planId, provider: "mercado_pago", amount, currency: "BRL" }
+          });
+        } catch (_) {
+          try {
+            const providerPaymentId = `manual_${planId}_${Date.now()}`;
+            await supabase
+              .from("payments")
+              .insert({ user_id: uid, amount: Math.round(amount * 100), currency: "BRL", status: "pending", provider: "mercado_pago", provider_payment_id: providerPaymentId });
+          } catch (_) {}
+        }
+      } else {
+        try {
+          const providerPaymentId = `manual_${planId}_${Date.now()}`;
+          await supabase
+            .from("payments")
+            .insert({ user_id: uid, amount: Math.round(amount * 100), currency: "BRL", status: "pending", provider: "mercado_pago", provider_payment_id: providerPaymentId });
+        } catch (_) {}
+      }
       if (!useEdge) { navigate(`/planos/pagar/${planId}`); return; }
       const { data, error } = await supabase.functions.invoke("user-create-checkout", {
         body: { subscription_id: subIns.id, plan_name: String(pr?.name || "Assinatura"), amount }
@@ -126,7 +162,15 @@ const PlansSelect = () => {
               <CardHeader className="bg-primary/5 rounded-md">
                 <CardTitle>{p.name}</CardTitle>
                 <CardDescription>
-                  R$ {(Number(p.price) / 100).toFixed(2)}/{p.interval === "year" ? "ano" : "mês"}
+                  {(() => {
+                    const priceNum = normalizeCents(toCents(p.price)) / 100;
+                    try {
+                      const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceNum);
+                      return `${brl}/${p.interval === "year" ? "ano" : "mês"}`;
+                    } catch {
+                      return `R$ ${priceNum.toFixed(2)}/${p.interval === "year" ? "ano" : "mês"}`;
+                    }
+                  })()}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -146,23 +190,24 @@ const PlansSelect = () => {
                       <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{note}</div>
                     ) : null;
                   })()}
-                  <div className="space-y-1 pt-2">
-                    {(p.features || [
-                      `Até ${p.monthly_credits} cortes/mês`,
-                      p.name === "Premium" ? "Validação rápida e suporte exclusivo" : p.name === "Profissional" ? "Validação rápida e suporte avançado" : "Validação de códigos no salão",
-                      p.name === "Premium" ? "Descontos exclusivos e brinde trimestral" : p.name === "Profissional" ? "Descontos em parceiros" : "Suporte básico",
-                    ]).map((f: string, i: number) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        <CheckCircle className="h-4 w-4 text-primary" />
-                        <span>{f}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {p.name === "Popular" && (
-                    <div className="text-xs font-semibold text-primary">Destaque</div>
-                  )}
-                  <Button className="mt-2 w-full" onClick={() => checkout(p.id)}>Assinar</Button>
+                <div className="space-y-1 pt-2">
+                  {(p.features || [
+                    `Até ${p.monthly_credits} cortes/mês`,
+                    p.name === "Premium" ? "Validação rápida e suporte exclusivo" : p.name === "Profissional" ? "Validação rápida e suporte avançado" : "Validação de códigos no salão",
+                    p.name === "Premium" ? "Descontos exclusivos e brinde trimestral" : p.name === "Profissional" ? "Descontos em parceiros" : "Suporte básico",
+                  ]).map((f: string, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-sm">
+                      <CheckCircle className="h-4 w-4 text-primary" />
+                      <span>{f}</span>
+                    </div>
+                  ))}
                 </div>
+                {/* removido bloco de divisão 80/20 */}
+                {p.name === "Popular" && (
+                  <div className="text-xs font-semibold text-primary">Destaque</div>
+                )}
+                <Button className="mt-2 w-full" onClick={() => checkout(p.id)}>Assinar</Button>
+              </div>
               </CardContent>
             </Card>
           ))}

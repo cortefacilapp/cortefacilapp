@@ -305,7 +305,12 @@ const UsuariosAtivos = () => {
               <div className="mt-2">
                 {planInfo ? (
                   <div className="text-sm inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">
-                    Plano ativo: {planInfo.name} • R$ {(Number(planInfo.price) / 100).toFixed(2)}/mês • {Number(planInfo.credits || 0)} cortes/mês
+                    {(() => {
+                      const price = (Math.round(Number(planInfo.price) || 0) / 100);
+                      let brl = `R$ ${price.toFixed(2).replace('.', ',')}`;
+                      try { brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(price); } catch {}
+                      return `Plano ativo: ${planInfo.name} • ${brl}/mês • ${Number(planInfo.credits || 0)} cortes/mês`;
+                    })()}
                   </div>
                 ) : (
                   <div className="text-sm inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">Sem plano ativo</div>

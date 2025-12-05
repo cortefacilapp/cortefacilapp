@@ -67,7 +67,11 @@ const Financeiro = () => {
     return { total, platformShare, salonShare, activeSalons };
   }, [payments, salons]);
 
-  const formatBRL = (v: number) => `R$ ${(v / 100).toFixed(2)}`;
+  const formatBRL = (v: number) => {
+    const reais = (Number(v) || 0) / 100;
+    try { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(reais); }
+    catch { return `R$ ${reais.toFixed(2).replace('.', ',')}`; }
+  };
   const daysOfMonth = useMemo(() => {
     const now = new Date();
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -171,7 +175,11 @@ const Financeiro = () => {
                 <LineChart data={dailyData} margin={{ left: 8, right: 16, top: 8, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="day" tick={{ fontSize: 12 }} />
-                  <YAxis tickFormatter={(v) => `R$ ${(v / 100).toFixed(0)}`} tick={{ fontSize: 12 }} />
+                  <YAxis tickFormatter={(v) => {
+                    const reais = (Number(v) || 0) / 100;
+                    try { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(reais); }
+                    catch { return `R$ ${Math.round(reais).toString()}`; }
+                  }} tick={{ fontSize: 12 }} />
                   <Tooltip formatter={(v) => formatBRL(Number(v))} labelFormatter={(l) => `Dia ${l}`} />
                   <Line type="monotone" dataKey="total" stroke="#1A73E8" strokeWidth={2} dot={false} />
                 </LineChart>
