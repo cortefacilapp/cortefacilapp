@@ -88,6 +88,8 @@ const Auth = () => {
     return () => subscription.unsubscribe();
   }, [navigate, isSalon]);
 
+  
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -113,7 +115,13 @@ const Auth = () => {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        const msg = String((error as any)?.message || "").toLowerCase();
+        if (msg.includes("already registered")) {
+        } else {
+          throw error;
+        }
+      }
 
       let { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (signInErr && (signInErr as any)?.message?.toLowerCase().includes("confirm")) {
@@ -181,6 +189,21 @@ const Auth = () => {
       }
 
       if (error) throw error;
+
+      if (siData?.user) {
+        const meta = siData.user.user_metadata || {};
+        await supabase
+          .from("profiles")
+          .upsert(
+            {
+              id: siData.user.id,
+              email: siData.user.email || email.trim(),
+              full_name: String(meta.full_name || meta.name || ""),
+              phone: String(meta.phone || "") || null,
+            },
+            { onConflict: "id" },
+          );
+      }
 
       toast.success("Login realizado com sucesso!");
       navigate(isSalon ? "/signup/salao" : "/dashboard");

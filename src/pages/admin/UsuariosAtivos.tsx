@@ -51,6 +51,29 @@ const UsuariosAtivos = () => {
           }));
         }
       }
+      try {
+        const ids = list.map((u: any) => u.id).filter(Boolean);
+        const ownerSet = new Set<string>();
+        if (ids.length) {
+          const { data: rolesRows } = await supabase
+            .from("user_roles")
+            .select("user_id, role")
+            .in("user_id", ids);
+          (rolesRows || []).forEach((r: any) => {
+            const rr = String(r.role || "").toLowerCase();
+            if (["owner", "salon_owner", "admin"].includes(rr)) ownerSet.add(String(r.user_id));
+          });
+          const { data: salonsRows } = await supabase
+            .from("salons")
+            .select("owner_id")
+            .in("owner_id", ids);
+          (salonsRows || []).forEach((s: any) => ownerSet.add(String(s.owner_id)));
+        }
+        list = list.filter((u: UserCommon) => {
+          const role = String(u.role || "user").toLowerCase();
+          return !ownerSet.has(String(u.id)) && (role === "user" || role === "customer");
+        });
+      } catch {}
       list.sort((a: UserCommon, b: UserCommon) => String(a.full_name || a.name || a.email).localeCompare(String(b.full_name || b.name || b.email)));
       setUsers(list);
       try {
