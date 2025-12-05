@@ -40,6 +40,7 @@ const PlanPaymentPix = () => {
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [err, setErr] = useState<string>("");
   const [paymentKey, setPaymentKey] = useState<string>("");
+  const [blocked, setBlocked] = useState<boolean>(false);
 
   useEffect(() => {
     const load = async () => {
@@ -128,6 +129,9 @@ const PlanPaymentPix = () => {
               stop = true;
               try { supabase.removeChannel(ch); } catch (_) {}
             }
+            if (next.status === "rejected") {
+              setBlocked(true);
+            }
           },
         )
         .subscribe();
@@ -148,6 +152,9 @@ const PlanPaymentPix = () => {
           setModalOpen(true);
           stop = true;
           clearInterval(pollId);
+        }
+        if (data?.status === "rejected") {
+          setBlocked(true);
         }
         if (tries > 60) {
           clearInterval(pollId);
@@ -368,7 +375,9 @@ const PlanPaymentPix = () => {
                     <Button variant="outline" className="w-full h-9 md:h-10 text-sm" onClick={() => { navigator.clipboard.writeText(pixCode); toast.success("Código PIX copiado"); }}>Copiar código PIX</Button>
                   </div>
                   <div className="sm:col-span-1">
-                    <Button className="w-full h-9 md:h-10 text-sm" onClick={() => { setStep(3); payViaCheckout(); }}>Enviar comprovante via WhatsApp</Button>
+                    {!blocked && (
+                      <Button className="w-full h-9 md:h-10 text-sm" onClick={() => { setStep(3); payViaCheckout(); }}>Enviar comprovante via WhatsApp</Button>
+                    )}
                   </div>
                 </div>
                 {!!err && <div className="mt-2 text-xs text-muted-foreground">{err}</div>}

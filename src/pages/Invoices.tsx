@@ -415,7 +415,11 @@ const Invoices = () => {
                     </span>
                     <span className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span>
                   </div>
-                  <Button variant="outline" className="mt-3 w-full" onClick={() => sendWhatsapp(p)}>Enviar comprovante via WhatsApp</Button>
+                  {p.status !== "rejected" && (
+                    <Button variant="outline" className="mt-3 w-full" onClick={() => sendWhatsapp(p)}>
+                      Enviar comprovante via WhatsApp
+                    </Button>
+                  )}
                 </div>
               ))}
               {!payments.length && (
