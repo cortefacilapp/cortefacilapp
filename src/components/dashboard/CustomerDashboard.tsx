@@ -312,6 +312,11 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
         toast.error("Fatura pendente ou cancelada");
         return;
       }
+      if (!affiliationName) {
+        toast.error("Afilie-se a um salão antes de gerar um código");
+        navigate("/saloes");
+        return;
+      }
       if (credits !== null && Number(credits) <= 0) {
         toast.error("Sem créditos disponíveis");
         return;
@@ -413,7 +418,7 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
           <p className="text-muted-foreground">Gerencie seus cortes e assinatura</p>
           <div className="mt-2 text-sm">
             {plan && (plan.status === "active" || plan.status === "approved") ? (
-              <span className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">
+              <div className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">
                 {(() => {
                   const cents = normalizeCents(toCents((plan as any)?.price));
                   const priceNum = cents / 100;
@@ -421,9 +426,12 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
                   try { formatted = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceNum); } catch {}
                   return `Plano ativo: ${String(plan?.name || "")} • ${formatted}/mês${credits !== null ? ` • créditos: ${credits}` : ""}`;
                 })()}
-              </span>
+                {plan?.status === "approved" && (
+                  <span className="ml-2 text-xs bg-emerald-100 text-emerald-700 px-1 rounded">Aprovado pelo admin</span>
+                )}
+              </div>
             ) : (
-              <span className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">Sem plano ativo</span>
+              <div className="inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">Sem plano ativo</div>
             )}
           </div>
         </div>
@@ -442,6 +450,9 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
                   try { formatted = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(priceNum); } catch {}
                   return `Plano: ${String(plan!.name)} - ${formatted}/${plan!.interval === "year" ? "ano" : "mês"}`;
                 })()}
+                {plan?.status === "approved" && (
+                  <span className="ml-2 text-xs bg-emerald-100 text-emerald-700 px-1 rounded">Aprovado pelo admin</span>
+                )}
               </CardDescription>
             ) : null}
             {affiliationName && (

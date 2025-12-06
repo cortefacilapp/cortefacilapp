@@ -364,15 +364,84 @@ const Invoices = () => {
                       ) : null;
                     })()}
                     {subscription.current_period_end && (
-                      <span className="text-xs">Vence: {new Date(subscription.current_period_end).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span>
+                      <>
+                        <span className="text-xs">Vence: {new Date(subscription.current_period_end).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span>
+                        {(() => {
+                          const end = new Date(String(subscription.current_period_end));
+                          const now = new Date();
+                          const days = Math.max(0, Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+                          return <span className="text-xs"> • faltam {days} dias</span>;
+                        })()}
+                      </>
                     )}
                   </>
-                ) : (
-                  <span>Nenhuma assinatura</span>
-                )}
+                ) : null}
               </div>
               <Button onClick={payNow}>Pagar Mensalidade</Button>
             </div>
+            {(() => {
+              const st = String(subscription?.status || "").toLowerCase();
+              const hasSub = subscription && ["approved", "active", "trialing"].includes(st);
+              let recentApproved: PaymentRow | null = null;
+              if (!hasSub) {
+                const now = new Date();
+                const cs = new Date(now.getFullYear(), now.getMonth(), 1);
+                const ce = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+                recentApproved = (paidPayments || []).find((p) => {
+                  const d = new Date(p.created_at);
+                  return String(p.status || "").toLowerCase() === "approved" && d >= cs && d <= ce;
+                }) || null;
+              }
+              if (hasSub || recentApproved) {
+                return (
+                  <div className="mt-3 inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">
+                    {(() => {
+                      const byId = subscription?.plan_id && Array.isArray(plans) ? plans.find((pl) => String(pl.id) === String(subscription!.plan_id)) : null;
+                      const amountCentsRaw = hasSub
+                        ? (typeof planPriceCents === "number" ? Number(planPriceCents) : (byId?.price ? Number(byId.price) : 0))
+                        : Number(recentApproved?.amount || 0);
+                      let amountCents = Math.round(Number(amountCentsRaw) || 0);
+                      for (let i = 0; i < 3; i++) { if (amountCents >= 100000) amountCents = Math.round(amountCents / 100); }
+                      const byPrice = Array.isArray(plans) ? plans.find((pl) => {
+                        let c = Math.round(Number((pl as any)?.price) || 0);
+                        for (let i = 0; i < 3; i++) { if (c >= 100000) c = Math.round(c / 100); }
+                        return c === amountCents;
+                      }) : null;
+                      const headerName = hasSub
+                        ? (planName || byId?.name || "Plano")
+                        : (resolvePlanName(amountCents) || "Plano");
+                      const intervalLabel = hasSub
+                        ? ((planInterval || byId?.interval) === "year" ? "ano" : "mês")
+                        : ((byPrice?.interval === "year") ? "ano" : "mês");
+                      let brl = `R$ ${(amountCents / 100).toFixed(2).replace('.', ',')}`;
+                      try { brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(amountCents / 100); } catch {}
+                      const creditsNum = hasSub
+                        ? (typeof planCredits === "number" ? Number(planCredits) : null)
+                        : (typeof byPrice?.monthly_credits === "number" ? Number(byPrice?.monthly_credits) : null);
+                      const creditsLabel = typeof creditsNum === "number" && creditsNum > 0 ? ` • ${creditsNum} cortes/mês` : "";
+                      let cycleLabel = "";
+                      if (hasSub && subscription?.current_period_end) {
+                        const end = new Date(String(subscription.current_period_end));
+                        const now = new Date();
+                        const days = Math.max(0, Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+                        cycleLabel = ` • faltam ${days} dias`;
+                      } else if (!hasSub) {
+                        const now = new Date();
+                        const start = recentApproved ? new Date(recentApproved.created_at) : now;
+                        const end = new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000);
+                        const days = Math.max(0, Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+                        cycleLabel = ` • faltam ${days} dias`;
+                      }
+                      return `Plano ativo: ${headerName} • ${brl}/${intervalLabel}${creditsLabel}${cycleLabel}`;
+                    })()}
+                    {hasSub && st === "approved" && (
+                      <span className="ml-2 text-xs bg-emerald-100 text-emerald-700 px-1 rounded">Aprovado pelo admin</span>
+                    )}
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </CardContent>
         </Card>
 

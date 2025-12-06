@@ -20,6 +20,12 @@ const UsuariosAtivos = () => {
   const [activeSubs, setActiveSubs] = useState<Set<string>>(new Set());
   const [affiliationsMap, setAffiliationsMap] = useState<Map<string, string>>(new Map());
 
+  const normalizeCents = (c: number) => {
+    let x = Math.round(Number(c) || 0);
+    for (let i = 0; i < 3; i++) { if (x >= 100000) x = Math.round(x / 100); }
+    return x;
+  };
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -306,7 +312,8 @@ const UsuariosAtivos = () => {
                 {planInfo ? (
                   <div className="text-sm inline-flex items-center rounded px-2 py-1 bg-secondary text-secondary-foreground">
                     {(() => {
-                      const price = (Math.round(Number(planInfo.price) || 0) / 100);
+                      const cents = normalizeCents(Math.round(Number(planInfo.price) || 0));
+                      const price = cents / 100;
                       let brl = `R$ ${price.toFixed(2).replace('.', ',')}`;
                       try { brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(price); } catch {}
                       return `Plano ativo: ${planInfo.name} • ${brl}/mês • ${Number(planInfo.credits || 0)} cortes/mês`;
