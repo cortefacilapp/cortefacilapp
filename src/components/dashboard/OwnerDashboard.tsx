@@ -22,7 +22,7 @@ const OwnerDashboard = ({ user }: OwnerDashboardProps) => {
   const handleSignOut = async () => {
     setLoading(true);
     try {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
       try {
         const pid = (import.meta as any).env.VITE_SUPABASE_PROJECT_ID || "";
         if (pid) localStorage.removeItem(`sb-${pid}-auth-token`);
@@ -31,7 +31,12 @@ const OwnerDashboard = ({ user }: OwnerDashboardProps) => {
       toast.success("Logout realizado com sucesso!");
       navigate("/auth");
     } catch (error: any) {
-      toast.error("Erro ao fazer logout");
+      const msg = String(error?.message || "");
+      if (msg.toLowerCase().includes("abort") || msg.toLowerCase().includes("aborted")) {
+        navigate("/auth");
+      } else {
+        toast.error("Erro ao fazer logout");
+      }
     } finally {
       setLoading(false);
     }

@@ -17,12 +17,23 @@ const SaloesPendentes = () => {
 
   const load = async () => {
     setLoading(true);
-    const res = await supabase
-      .from("salons")
-      .select("id, name, city, state, address, owner_id, created_at, postal_code, description, photo_url")
-      .eq("status", "pending");
-    if (!res.error && res.data) setSalons(res.data);
-    setLoading(false);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess?.session) {
+        setLoading(false);
+        return;
+      }
+      const res = await supabase
+        .from("salons")
+        .select("id, name, city, state, address, owner_id, created_at, postal_code, description, photo_url")
+        .eq("status", "pending");
+      if (!res.error && res.data) setSalons(res.data);
+    } catch (e: any) {
+      const msg = String(e?.message || "");
+      if (!msg.toLowerCase().includes("abort")) toast.error("Erro ao carregar salões pendentes");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -30,34 +41,44 @@ const SaloesPendentes = () => {
   }, []);
 
   const approve = async (id: string) => {
-    const { data: userData } = await supabase.auth.getUser();
-    const { error } = await supabase
-      .from("salons")
-      .update({ status: "approved", approved_at: new Date().toISOString(), approved_by: userData?.user?.id || null })
-      .eq("id", id);
-    if (error) {
-      toast.error("Erro ao aprovar");
-      return;
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from("salons")
+        .update({ status: "approved", approved_at: new Date().toISOString(), approved_by: userData?.user?.id || null })
+        .eq("id", id);
+      if (error) {
+        toast.error("Erro ao aprovar");
+        return;
+      }
+      toast.success("Salão aprovado");
+      setSelected(null);
+      load();
+    } catch (e: any) {
+      const msg = String(e?.message || "");
+      if (!msg.toLowerCase().includes("abort")) toast.error("Erro ao aprovar");
     }
-    toast.success("Salão aprovado");
-    setSelected(null);
-    load();
   };
 
   const reject = async (id: string) => {
-    const { data: userData } = await supabase.auth.getUser();
-    const { error } = await supabase
-      .from("salons")
-      .update({ status: "rejected" })
-      .eq("id", id);
-    if (error) {
-      toast.error("Erro ao reprovar");
-      return;
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from("salons")
+        .update({ status: "rejected" })
+        .eq("id", id);
+      if (error) {
+        toast.error("Erro ao reprovar");
+        return;
+      }
+      toast.success("Salão reprovado");
+      setSelected(null);
+      setReason("");
+      load();
+    } catch (e: any) {
+      const msg = String(e?.message || "");
+      if (!msg.toLowerCase().includes("abort")) toast.error("Erro ao reprovar");
     }
-    toast.success("Salão reprovado");
-    setSelected(null);
-    setReason("");
-    load();
   };
 
   const filtered = useMemo(() => {

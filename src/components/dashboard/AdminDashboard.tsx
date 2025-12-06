@@ -30,33 +30,61 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
 
   useEffect(() => {
     const loadCounts = async () => {
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        if (!sess?.session) {
+          navigate("/auth");
+          return;
+        }
+      } catch (e) {
+        navigate("/auth");
+        return;
+      }
       const { count } = await supabase
         .from("salons")
         .select("id", { count: "exact", head: true })
         .eq("status", "pending");
       if (typeof count === "number") setPendingCount(count);
-      const { data: pend } = await supabase
-        .from("salons")
-        .select("id,name,city,state,address,owner_id,created_at")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false });
-      setPendingSalons(pend || []);
-      const { count: act } = await supabase
-        .from("salons")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "approved");
-      if (typeof act === "number") setActiveCount(act);
-      const { data: userCountRpc } = await supabase.rpc("count_common_users");
-      if (Array.isArray(userCountRpc) && userCountRpc.length === 1 && typeof userCountRpc[0] === "number") {
-        setUsersCount(Number(userCountRpc[0]));
-      } else if (typeof userCountRpc === "number") {
-        setUsersCount(Number(userCountRpc));
-      } else {
-        const { count: users } = await supabase
-          .from("profiles")
+      try {
+        const { data: pend, error: pendErr } = await supabase
+          .from("salons")
+          .select("id,name,city,state,address,owner_id,created_at")
+          .eq("status", "pending")
+          .order("created_at", { ascending: false });
+        if (!pendErr) setPendingSalons(pend || []);
+      } catch (e: any) {
+        const msg = String(e?.message || "");
+        if (msg.toLowerCase().includes("abort")) {
+          return;
+        }
+        toast.error("Falha ao carregar salões pendentes");
+      }
+      try {
+        const { count: act } = await supabase
+          .from("salons")
           .select("id", { count: "exact", head: true })
-          .in("role", ["user", "customer"]);
-        if (typeof users === "number") setUsersCount(users);
+          .eq("status", "approved");
+        if (typeof act === "number") setActiveCount(act);
+      } catch (e: any) {
+        const msg = String(e?.message || "");
+        if (!msg.toLowerCase().includes("abort")) toast.error("Falha ao carregar salões ativos");
+      }
+      try {
+        const { data: userCountRpc } = await supabase.rpc("count_common_users");
+        if (Array.isArray(userCountRpc) && userCountRpc.length === 1 && typeof userCountRpc[0] === "number") {
+          setUsersCount(Number(userCountRpc[0]));
+        } else if (typeof userCountRpc === "number") {
+          setUsersCount(Number(userCountRpc));
+        } else {
+          const { count: users } = await supabase
+            .from("profiles")
+            .select("id", { count: "exact", head: true })
+            .in("role", ["user", "customer"]);
+          if (typeof users === "number") setUsersCount(users);
+        }
+      } catch (e: any) {
+        const msg = String(e?.message || "");
+        if (!msg.toLowerCase().includes("abort")) toast.error("Falha ao carregar usuários");
       }
     };
     loadCounts();
@@ -64,17 +92,26 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
 
   useEffect(() => {
     const loadPlatformRevenue = async () => {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
-      const { data } = await supabase
-        .from("payments")
-        .select("platform_amount,status,created_at")
-        .eq("status", "approved")
-        .gte("created_at", start)
-        .lte("created_at", end);
-      const sum = (data || []).reduce((acc: number, p: PaymentRow) => acc + (Number(p.platform_amount) || 0), 0);
-      setPlatformRevenue(sum);
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        if (!sess?.session) return;
+      } catch (_) { return; }
+      try {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+        const { data } = await supabase
+          .from("payments")
+          .select("platform_amount,status,created_at")
+          .eq("status", "approved")
+          .gte("created_at", start)
+          .lte("created_at", end);
+        const sum = (data || []).reduce((acc: number, p: PaymentRow) => acc + (Number(p.platform_amount) || 0), 0);
+        setPlatformRevenue(sum);
+      } catch (e: any) {
+        const msg = String(e?.message || "");
+        if (!msg.toLowerCase().includes("abort")) toast.error("Falha ao carregar receita da plataforma");
+      }
     };
     loadPlatformRevenue();
   }, []);
@@ -104,12 +141,21 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
   useEffect(() => {
     const loadActive = async () => {
       if (!activeOpen) return;
-      const res = await supabase
-        .from("salons")
-        .select("id,name,city,state,address,phone,approved_at")
-        .eq("status", "approved")
-        .order("approved_at", { ascending: false });
-      if (!res.error && res.data) setActiveSalons(res.data);
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        if (!sess?.session) return;
+      } catch (_) { return; }
+      try {
+        const res = await supabase
+          .from("salons")
+          .select("id,name,city,state,address,phone,approved_at")
+          .eq("status", "approved")
+          .order("approved_at", { ascending: false });
+        if (!res.error && res.data) setActiveSalons(res.data);
+      } catch (e: any) {
+        const msg = String(e?.message || "");
+        if (!msg.toLowerCase().includes("abort")) toast.error("Falha ao carregar salões ativos");
+      }
     };
     loadActive();
   }, [activeOpen]);
