@@ -51,7 +51,7 @@ const normalizeCents = (c: number) => {
 
 const priceCentsFor = (r: Row) => {
   const base = Math.round(Number(r.amount) || 0);
-  if (base > 0) return base;
+  if (base > 0) return normalizeCents(base);
   const planRaw = r.plan?.price ? toCents(r.plan!.price) : 0;
   return normalizeCents(planRaw);
 };
@@ -71,7 +71,7 @@ const FaturasPendentes = () => {
     if (approvingId) return;
     setApprovingId(r.id);
     try {
-      const body: Record<string, unknown> = { user_id: r.user_id };
+      const body: Record<string, unknown> = { user_id: r.user_id, payment_id: r.id };
       if (r.subscription_id) body.subscription_id = r.subscription_id;
       if (r.plan_id) body.plan_id = r.plan_id;
       try {
@@ -108,23 +108,14 @@ const FaturasPendentes = () => {
               .insert({ user_id: r.user_id, plan_id: r.plan_id, status: "active", current_period_start: now.toISOString(), current_period_end: end.toISOString() });
           }
         }
-        const { data: pay } = await supabase
+        // Aprova a fatura específica clicada
+        const gross = priceCentsFor(r);
+        const platform_amount = Math.round(gross * 0.2);
+        const salon_amount = gross - platform_amount;
+        await supabase
           .from("payments")
-          .select("id, amount")
-          .eq("status", "pending")
-          .eq("user_id", r.user_id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (pay?.id) {
-          const gross = Number(pay.amount) || 0;
-          const platform_amount = Math.round(gross * 0.2);
-          const salon_amount = gross - platform_amount;
-          await supabase
-            .from("payments")
-            .update({ status: "approved", platform_amount, salon_amount, provider_payment_id: "manual_whatsapp" })
-            .eq("id", pay.id);
-        }
+          .update({ status: "approved", platform_amount, salon_amount })
+          .eq("id", r.id);
       }
       toast.success("Fatura aprovada");
       setRows((prev) => prev.filter((x) => x.id !== r.id));
@@ -302,7 +293,7 @@ const FaturasPendentes = () => {
                           <CreditCard className="h-4 w-4" />
                           {r.plan?.name || (r.provider?.toUpperCase() || "Pagamento")}
                         </span>
-                        <span className="text-primary">{formatBRLFromCents(priceCentsFor(r))}</span>
+                        <span className="text-primary">{formatBRLFromCents(priceCentsFor(r)).replace(/\s*BRL$/, "")}</span>
                       </CardTitle>
                       <CardDescription className="flex items-center gap-2">
                         <CalendarDays className="h-3 w-3" />

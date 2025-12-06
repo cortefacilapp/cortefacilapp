@@ -59,7 +59,8 @@ const Financeiro = () => {
     let platformShare = 0;
     let salonShare = 0;
     for (const p of payments) {
-      total += Number(p.amount) || 0;
+      const gross = (Number(p.platform_amount) || 0) + (Number(p.salon_amount) || 0);
+      total += gross;
       platformShare += Number(p.platform_amount) || 0;
       salonShare += Number(p.salon_amount) || 0;
     }
@@ -84,7 +85,8 @@ const Financeiro = () => {
       const dt = new Date(p.created_at);
       const day = dt.getDate();
       const item = map.get(day);
-      if (item) item.total += Number(p.amount) || 0;
+      const gross = (Number(p.platform_amount) || 0) + (Number(p.salon_amount) || 0);
+      if (item) item.total += gross;
     }
     return Array.from(map.values());
   }, [payments, daysOfMonth]);
@@ -223,7 +225,7 @@ const Financeiro = () => {
             {payments.slice().reverse().slice(0, 9).map((p, idx) => (
               <div key={`${p.created_at}-${idx}`} className="rounded border p-3">
                 <div className="flex items-center justify-between">
-                  <div className="font-medium">{formatBRL(Number(p.amount))}</div>
+                  <div className="font-medium">{formatBRL(((Number(p.platform_amount) || 0) + (Number(p.salon_amount) || 0)))}</div>
                   <div className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleDateString("pt-BR")}</div>
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">Plataforma: {formatBRL(Number(p.platform_amount))}</div>
