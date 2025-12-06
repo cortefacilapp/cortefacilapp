@@ -281,36 +281,39 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
 
   const generateCode = async () => {
     try {
-      // Bloqueios: precisa ter assinatura ativa no período e fatura aprovada
       const { data: uSub } = await supabase
         .from("user_subscriptions")
         .select("id,status,current_period_start,current_period_end")
         .eq("user_id", user.id)
-        .eq("status", "active")
-        .order("current_period_end", { ascending: false })
-        .maybeSingle();
+        .in("status", ["active", "approved", "trialing"]) as any;
+      const sub = Array.isArray(uSub) ? (uSub[0] || null) : uSub;
       const now = new Date();
-      if (!uSub || !uSub.current_period_start || !uSub.current_period_end) {
-        toast.error("Assinatura inativa");
-        return;
-      }
-      const ps = new Date(uSub.current_period_start as any);
-      const pe = new Date(uSub.current_period_end as any);
-      if (now < ps || now > pe) {
-        toast.error("Fora do período da assinatura");
-        return;
-      }
-      const { data: pays } = await supabase
-        .from("payments")
-        .select("status,created_at")
-        .eq("user_id", user.id)
-        .eq("status", "approved")
-        .gte("created_at", ps.toISOString())
-        .lte("created_at", pe.toISOString())
-        .limit(1);
-      if (!pays || !pays.length) {
-        toast.error("Fatura pendente ou cancelada");
-        return;
+      if (sub && sub.current_period_start && sub.current_period_end) {
+        const ps = new Date(sub.current_period_start as any);
+        const pe = new Date(sub.current_period_end as any);
+        if (now < ps || now > pe) {
+          toast.error("Fora do período da assinatura");
+          return;
+        }
+      } else {
+        const { data: pays2 } = await supabase
+          .from("payments")
+          .select("status,created_at")
+          .eq("user_id", user.id)
+          .eq("status", "approved")
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const last = Array.isArray(pays2) && pays2.length ? pays2[0] : null;
+        if (!last?.created_at) {
+          toast.error("Assinatura inativa");
+          return;
+        }
+        const startD = new Date(String(last.created_at));
+        const endD = new Date(startD.getTime() + 30 * 24 * 60 * 60 * 1000);
+        if (now < startD || now > endD) {
+          toast.error("Fora do período da assinatura");
+          return;
+        }
       }
       if (!affiliationName) {
         toast.error("Afilie-se a um salão antes de gerar um código");
@@ -481,7 +484,7 @@ const CustomerDashboard = ({ user }: CustomerDashboardProps) => {
               <CardDescription>Crie um código para usar no salão</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button className="w-full bg-gradient-primary" onClick={generateCode} disabled={credits !== null && Number(credits) <= 0}>
+              <Button className="w-full bg-gradient-primary" onClick={generateCode} disabled={(credits !== null && Number(credits) <= 0) || !affiliationName}>
                 Gerar Novo Código
               </Button>
               <p className="mt-4 text-xs text-muted-foreground">

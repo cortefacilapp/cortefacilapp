@@ -377,7 +377,7 @@ const Invoices = () => {
                   </>
                 ) : null}
               </div>
-              <Button onClick={payNow}>Pagar Mensalidade</Button>
+              {null}
             </div>
             {(() => {
               const st = String(subscription?.status || "").toLowerCase();
