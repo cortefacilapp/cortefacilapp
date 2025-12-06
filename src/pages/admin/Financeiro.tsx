@@ -115,7 +115,6 @@ const Financeiro = () => {
           <div className="hidden md:flex items-center gap-3">
             <div className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm">
               <TrendingUp className="h-4 w-4" />
-              <span>{formatBRL(totals.total)}</span>
             </div>
           </div>
         </div>

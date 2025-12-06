@@ -66,43 +66,26 @@ const PlansSelect = () => {
       const now = new Date();
       const end = new Date(now);
       end.setMonth(end.getMonth() + 1);
-      const { data: subIns, error: subErr } = await supabase
-        .from("user_subscriptions")
-        .insert({ user_id: uid, plan_id: planId, status: "pending", current_period_start: now.toISOString(), current_period_end: end.toISOString() })
-        .select("id")
-        .single();
-      if (subErr || !subIns?.id) throw subErr || new Error("Falha ao criar assinatura");
       const amount = Math.round((normalizeCents(toCents((pr as any)?.price)) / 100) * 100) / 100; // reais
       if (useEdge) {
-        try {
-          await supabase.functions.invoke("record-pending-payment", {
-            body: { plan_id: planId, provider: "mercado_pago", amount, currency: "BRL" }
-          });
-        } catch (_) {
-          try {
-            const providerPaymentId = `manual_${planId}_${Date.now()}`;
-            await supabase
-              .from("payments")
-              .insert({ user_id: uid, amount: Math.round(amount * 100), currency: "BRL", status: "pending", provider: "mercado_pago", provider_payment_id: providerPaymentId });
-          } catch (_) {}
+        const { data: subIns, error: subErr } = await supabase
+          .from("user_subscriptions")
+          .insert({ user_id: uid, plan_id: planId, status: "pending", current_period_start: now.toISOString(), current_period_end: end.toISOString() })
+          .select("id")
+          .single();
+        if (subErr || !subIns?.id) throw subErr || new Error("Falha ao criar assinatura");
+        const { data, error } = await supabase.functions.invoke("user-create-checkout", {
+          body: { subscription_id: subIns.id, plan_name: String(pr?.name || "Assinatura"), amount }
+        });
+        if (error || !data?.init_point) {
+          navigate(`/planos/pagar/${planId}`);
+          return;
         }
+        window.location.href = String(data.init_point);
       } else {
-        try {
-          const providerPaymentId = `manual_${planId}_${Date.now()}`;
-          await supabase
-            .from("payments")
-            .insert({ user_id: uid, amount: Math.round(amount * 100), currency: "BRL", status: "pending", provider: "mercado_pago", provider_payment_id: providerPaymentId });
-        } catch (_) {}
-      }
-      if (!useEdge) { navigate(`/planos/pagar/${planId}`); return; }
-      const { data, error } = await supabase.functions.invoke("user-create-checkout", {
-        body: { subscription_id: subIns.id, plan_name: String(pr?.name || "Assinatura"), amount }
-      });
-      if (error || !data?.init_point) {
         navigate(`/planos/pagar/${planId}`);
         return;
       }
-      window.location.href = String(data.init_point);
     } catch (_) {
       navigate(`/planos/pagar/${planId}`);
     }

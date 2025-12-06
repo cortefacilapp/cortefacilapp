@@ -52,9 +52,16 @@ const PlanPaymentPix = () => {
           .select("id,name,price,interval,monthly_credits,cuts_per_month,description")
           .eq("id", planId)
           .maybeSingle();
-        if (!error && data) p = data;
+        if (!error && data) {
+          p = data;
+        } else {
+          toast.error("Plano inválido");
+          navigate("/planos");
+          setLoading(false);
+          return;
+        }
       }
-      if (!p) {
+      if (!p && !planId) {
         const { data: list } = await supabase
           .from("plans")
           .select("id,name,price,interval,monthly_credits,cuts_per_month,description,active")
@@ -201,8 +208,20 @@ const PlanPaymentPix = () => {
         const { data: userData } = await supabase.auth.getUser();
         const uid = userData?.user?.id;
         if (uid) {
+          try {
+            const { data: existing } = await supabase
+              .from("user_subscriptions")
+              .select("id,status")
+              .eq("user_id", uid)
+              .eq("plan_id", pid)
+              .maybeSingle();
+            if (!existing) {
+              await supabase.from("user_subscriptions").insert({ user_id: uid, plan_id: pid, status: "pending", current_period_start: new Date().toISOString(), current_period_end: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
+            } else if (existing.status !== "pending") {
+              await supabase.from("user_subscriptions").update({ status: "pending", current_period_start: null, current_period_end: null }).eq("id", existing.id);
+            }
+          } catch (_) {}
           await supabase.from("payments").insert({ user_id: uid, amount: cents, currency: "BRL", status: "pending", provider: "pix", provider_payment_id: providerId });
-          await supabase.from("user_subscriptions").insert({ user_id: uid, plan_id: pid, status: "pending", current_period_start: new Date().toISOString(), current_period_end: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
         }
       } catch (_) {}
     } catch (e: any) {
@@ -225,8 +244,21 @@ const PlanPaymentPix = () => {
         const { data: userData } = await supabase.auth.getUser();
         const uid = userData?.user?.id;
         if (uid) {
+          const pid2 = targetPlanId || planIdState || plan?.id;
+          try {
+            const { data: existing } = await supabase
+              .from("user_subscriptions")
+              .select("id,status")
+              .eq("user_id", uid)
+              .eq("plan_id", pid2 as any)
+              .maybeSingle();
+            if (!existing) {
+              await supabase.from("user_subscriptions").insert({ user_id: uid, plan_id: pid2 as any, status: "pending", current_period_start: new Date().toISOString(), current_period_end: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
+            } else if (existing.status !== "pending") {
+              await supabase.from("user_subscriptions").update({ status: "pending", current_period_start: null, current_period_end: null }).eq("id", existing.id);
+            }
+          } catch (_) {}
           await supabase.from("payments").insert({ user_id: uid, amount: cents2, currency: "BRL", status: "pending", provider: "pix", provider_payment_id: providerId });
-          await supabase.from("user_subscriptions").insert({ user_id: uid, plan_id: targetPlanId || planIdState || plan?.id, status: "pending", current_period_start: new Date().toISOString(), current_period_end: new Date(Date.now() + 30*24*60*60*1000).toISOString() });
         }
       } catch (_) {}
     }
@@ -235,6 +267,7 @@ const PlanPaymentPix = () => {
   useEffect(() => {
     const fallbackPlan = async () => {
       try {
+        if (planIdState || planId) return;
         if (plan && plan.name) return;
         const { data: userData } = await supabase.auth.getUser();
         const uid = userData?.user?.id;
@@ -252,8 +285,8 @@ const PlanPaymentPix = () => {
           .select("id,name,price,interval,monthly_credits,cuts_per_month,description,active")
           .eq("active", true);
         let match: any = null;
-        const centsToReal = Math.round(amt) / 100;
-        match = (plans || []).find((pl: any) => Number(pl.price) === centsToReal || Math.round(Number(pl.price) * 100) === Math.round(amt));
+        const amountCents = Math.round(amt);
+        match = (plans || []).find((pl: any) => Math.round(Number(pl.price || 0)) === amountCents);
         if (!match && uid) {
           const { data: sub } = await supabase
             .from("user_subscriptions")
@@ -271,7 +304,7 @@ const PlanPaymentPix = () => {
       } catch (_) {}
     };
     fallbackPlan();
-  }, [plan?.name, paymentKey]);
+  }, [paymentKey, plan?.name, planIdState, planId]);
 
   if (loading) {
     return (
