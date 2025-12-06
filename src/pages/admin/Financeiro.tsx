@@ -6,12 +6,10 @@ import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tool
 
 const Financeiro = () => {
   const [loading, setLoading] = useState(true);
-  type PaymentRow = { user_id: string; amount: number; platform_amount: number; salon_amount: number; status: string; created_at: string };
-  type AffRow = { user_id: string; salon_id: string; created_at?: string };
+  type PaymentRow = { amount: number; platform_amount: number; salon_amount: number; status: string; created_at: string };
   type SalonRow = { id: string; name: string; status: string };
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [salons, setSalons] = useState<SalonRow[]>([]);
-  const [affiliations, setAffiliations] = useState<AffRow[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -21,24 +19,12 @@ const Financeiro = () => {
       const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
       const payoutsRes = await supabase
         .from("payments")
-        .select("user_id, amount, platform_amount, salon_amount, status, created_at")
+        .select("amount, platform_amount, salon_amount, status, created_at")
         .eq("status", "approved")
         .gte("created_at", start)
         .lte("created_at", end);
       const salonsRes = await supabase.from("salons").select("id, name, status");
-      if (!payoutsRes.error && payoutsRes.data) {
-        setPayments(payoutsRes.data);
-        const ids = Array.from(new Set((payoutsRes.data || []).map((p) => String((p as any).user_id)).filter(Boolean)));
-        if (ids.length) {
-          const affRes = await supabase
-            .from("user_affiliations")
-            .select("user_id, salon_id, created_at")
-            .in("user_id", ids);
-          if (!affRes.error && affRes.data) setAffiliations(affRes.data as any);
-        } else {
-          setAffiliations([]);
-        }
-      }
+      if (!payoutsRes.error && payoutsRes.data) setPayments(payoutsRes.data);
       if (!salonsRes.error && salonsRes.data) setSalons(salonsRes.data);
       setLoading(false);
     };
@@ -54,7 +40,7 @@ const Financeiro = () => {
         const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
         supabase
           .from("payments")
-          .select("user_id, amount, platform_amount, salon_amount, status, created_at")
+          .select("amount, platform_amount, salon_amount, status, created_at")
           .eq("status", "approved")
           .gte("created_at", start)
           .lte("created_at", end)
@@ -72,23 +58,15 @@ const Financeiro = () => {
     let total = 0;
     let platformShare = 0;
     let salonShare = 0;
-    const affMap = new Map<string, AffRow>();
-    for (const a of affiliations) affMap.set(String(a.user_id), a);
     for (const p of payments) {
-      const aff = affMap.get(String(p.user_id));
-      const payAt = new Date(p.created_at);
-      const affAt = aff?.created_at ? new Date(String(aff.created_at)) : null;
-      const eligible = !!aff && (!affAt || affAt <= payAt);
-      const sal = eligible ? (Number(p.salon_amount) || 0) : 0;
-      const plat = (Number(p.platform_amount) || 0) + (!eligible ? (Number(p.salon_amount) || 0) : 0);
-      const gross = plat + sal;
+      const gross = (Number(p.platform_amount) || 0) + (Number(p.salon_amount) || 0);
       total += gross;
-      platformShare += plat;
-      salonShare += sal;
+      platformShare += Number(p.platform_amount) || 0;
+      salonShare += Number(p.salon_amount) || 0;
     }
     const activeSalons = salons.filter((s) => s.status === "approved").length;
     return { total, platformShare, salonShare, activeSalons };
-  }, [payments, salons, affiliations]);
+  }, [payments, salons]);
 
   const formatBRL = (v: number) => {
     const reais = (Number(v) || 0) / 100;
@@ -103,22 +81,15 @@ const Financeiro = () => {
   const dailyData = useMemo(() => {
     const map = new Map<number, { day: number; total: number }>();
     for (const d of daysOfMonth) map.set(d, { day: d, total: 0 });
-    const affMap = new Map<string, AffRow>();
-    for (const a of affiliations) affMap.set(String(a.user_id), a);
     for (const p of payments) {
       const dt = new Date(p.created_at);
       const day = dt.getDate();
       const item = map.get(day);
-      const aff = affMap.get(String(p.user_id));
-      const affAt = aff?.created_at ? new Date(String(aff.created_at)) : null;
-      const eligible = !!aff && (!affAt || affAt <= dt);
-      const sal = eligible ? (Number(p.salon_amount) || 0) : 0;
-      const plat = (Number(p.platform_amount) || 0) + (!eligible ? (Number(p.salon_amount) || 0) : 0);
-      const gross = plat + sal;
+      const gross = (Number(p.platform_amount) || 0) + (Number(p.salon_amount) || 0);
       if (item) item.total += gross;
     }
     return Array.from(map.values());
-  }, [payments, daysOfMonth, affiliations]);
+  }, [payments, daysOfMonth]);
   const shareData = useMemo(() => {
     return [
       { name: "Plataforma", value: totals.platformShare },
@@ -254,31 +225,11 @@ const Financeiro = () => {
             {payments.slice().reverse().slice(0, 9).map((p, idx) => (
               <div key={`${p.created_at}-${idx}`} className="rounded border p-3">
                 <div className="flex items-center justify-between">
-                  {(() => {
-                    const aff = affiliations.find((a) => String(a.user_id) === String(p.user_id));
-                    const payAt = new Date(p.created_at);
-                    const affAt = aff?.created_at ? new Date(String(aff.created_at)) : null;
-                    const eligible = !!aff && (!affAt || affAt <= payAt);
-                    const sal = eligible ? (Number(p.salon_amount) || 0) : 0;
-                    const plat = (Number(p.platform_amount) || 0) + (!eligible ? (Number(p.salon_amount) || 0) : 0);
-                    return <div className="font-medium">{formatBRL(plat + sal)}</div>;
-                  })()}
+                  <div className="font-medium">{formatBRL(((Number(p.platform_amount) || 0) + (Number(p.salon_amount) || 0)))}</div>
                   <div className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleDateString("pt-BR")}</div>
                 </div>
-                {(() => {
-                  const aff = affiliations.find((a) => String(a.user_id) === String(p.user_id));
-                  const payAt = new Date(p.created_at);
-                  const affAt = aff?.created_at ? new Date(String(aff.created_at)) : null;
-                  const eligible = !!aff && (!affAt || affAt <= payAt);
-                  const sal = eligible ? (Number(p.salon_amount) || 0) : 0;
-                  const plat = (Number(p.platform_amount) || 0) + (!eligible ? (Number(p.salon_amount) || 0) : 0);
-                  return (
-                    <>
-                      <div className="mt-1 text-xs text-muted-foreground">Plataforma: {formatBRL(plat)}</div>
-                      <div className="text-xs text-muted-foreground">Salões: {formatBRL(sal)}</div>
-                    </>
-                  );
-                })()}
+                <div className="mt-1 text-xs text-muted-foreground">Plataforma: {formatBRL(Number(p.platform_amount))}</div>
+                <div className="text-xs text-muted-foreground">Salões: {formatBRL(Number(p.salon_amount))}</div>
               </div>
             ))}
             {!payments.length && <div className="text-sm text-muted-foreground">Sem pagamentos aprovados no período</div>}

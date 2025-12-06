@@ -54,6 +54,27 @@ const OwnerDashboard = ({ user }: OwnerDashboardProps) => {
         const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
 
+        // Zero: somar pagamentos aprovados dos usuários afiliados ao salão no mês
+        const { data: affUsers } = await supabase
+          .from("user_affiliations")
+          .select("user_id")
+          .eq("salon_id", salon.id);
+        const affIds = (affUsers || []).map((r: any) => String(r.user_id)).filter(Boolean);
+        if (affIds.length) {
+          const { data: paysAff } = await supabase
+            .from("payments")
+            .select("salon_amount,status,created_at")
+            .in("user_id", affIds)
+            .eq("status", "approved")
+            .gte("created_at", startDate.toISOString())
+            .lte("created_at", endDate.toISOString());
+          const sumAff = (paysAff || []).reduce((acc: number, p: any) => acc + (Number(p.salon_amount) || 0), 0);
+          if (sumAff > 0) {
+            setMonthTotal(Math.round(sumAff));
+            return;
+          }
+        }
+
         // Backfill visit_logs do mês
         await supabase
           .rpc("backfill_visit_logs_for_salon", { p_salon: salon.id, p_start: startDate.toISOString(), p_end: endDate.toISOString() })
