@@ -36,6 +36,18 @@ const SalonSignup = () => {
   const [cep, setCep] = useState("");
   const [street, setStreet] = useState("");
   const [number, setNumber] = useState("");
+  const [phone, setPhone] = useState("");
+
+  const formatPhone = (s: string) => {
+    const d = s.replace(/\D/g, "").slice(0, 11);
+    if (!d) return "";
+    if (d.length < 3) return `(${d}`;
+    const dd = d.slice(0, 2);
+    const n = d.slice(2);
+    if (n.length <= 4) return `(${dd}) ${n}`;
+    if (d.length === 11) return `(${dd}) ${n.slice(0, 5)}-${n.slice(5)}`;
+    return `(${dd}) ${n.slice(0, 4)}-${n.slice(4)}`;
+  };
 
   
 
@@ -82,6 +94,7 @@ const SalonSignup = () => {
           city,
           postal_code: cep || null,
           address: `${street}, ${number} - ${city}/${state} - CEP ${cep}`,
+          phone: phone || null,
           // coluna opcional no banco
           doc,
         });
@@ -101,6 +114,7 @@ const SalonSignup = () => {
             city,
             postal_code: cep || null,
             address: `${street}, ${number} - ${city}/${state} - CEP ${cep}`,
+            phone: phone || null,
           });
           if (fallbackErr) throw fallbackErr;
         } else {
@@ -163,6 +177,18 @@ const SalonSignup = () => {
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="openingHours">Horário de funcionamento</Label>
                 <Input id="openingHours" placeholder="Ex.: Seg-Sex 09:00–19:00; Sáb 09:00–14:00" value={openingHours} onChange={(e) => setOpeningHours(e.target.value)} />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="phone">WhatsApp</Label>
+                <Input
+                  id="phone"
+                  type="text"
+                  placeholder="(99) 99999-9999"
+                  inputMode="numeric"
+                  maxLength={15}
+                  value={phone}
+                  onChange={(e) => setPhone(formatPhone(e.target.value))}
+                />
               </div>
               <div className="space-y-2 md:col-span-2">
                 <Label>Dias de funcionamento</Label>
