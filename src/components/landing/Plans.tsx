@@ -1,56 +1,98 @@
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Check, Scissors, Star, Sparkles } from "lucide-react";
-import { Link } from "react-router-dom";
-
-const plans = [
-  {
-    name: "Básico",
-    price: "59,99",
-    credits: 2,
-    description: "Perfeito para manter o visual em dia",
-    features: [
-      "2 cortes por mês",
-      "Válido por 30 dias",
-      "Qualquer barbearia parceira",
-      "Código de validação seguro",
-    ],
-    popular: false,
-    icon: Scissors,
-  },
-  {
-    name: "Popular",
-    price: "79,99",
-    credits: 3,
-    description: "O favorito dos nossos assinantes",
-    features: [
-      "3 cortes por mês",
-      "Válido por 30 dias",
-      "Qualquer barbearia parceira",
-      "Código de validação seguro",
-      "Prioridade no atendimento",
-    ],
-    popular: true,
-    icon: Star,
-  },
-  {
-    name: "Premium",
-    price: "159,99",
-    credits: 4,
-    description: "Para quem quer o melhor sempre",
-    features: [
-      "4 cortes por mês",
-      "Válido por 30 dias",
-      "Qualquer barbearia parceira",
-      "Código de validação seguro",
-      "Prioridade no atendimento",
-      "Acesso a serviços exclusivos",
-    ],
-    popular: false,
-    icon: Sparkles,
-  },
-];
+import { Check, Scissors, Star, Sparkles, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth";
 
 export function Plans() {
+  const [plans, setPlans] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    fetchPlans();
+  }, []);
+
+  const fetchPlans = async () => {
+    try {
+      let { data, error } = await supabase
+        .from('plans')
+        .select('*')
+        .order('price');
+      
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        // Auto-seed default plans if empty
+        const defaultPlans = [
+          { 
+            name: "Básico", 
+            price: 59.99, 
+            credits_per_month: 2, 
+            description: "Perfeito para manter o visual em dia",
+            duration_days: 30
+          },
+          { 
+            name: "Popular", 
+            price: 79.99, 
+            credits_per_month: 3, 
+            description: "O favorito dos nossos assinantes",
+            duration_days: 30
+          },
+          { 
+            name: "Premium", 
+            price: 159.99, 
+            credits_per_month: 4, 
+            description: "Para quem quer o melhor sempre",
+            duration_days: 30
+          }
+        ];
+        
+        const { data: newPlans, error: seedError } = await supabase
+          .from('plans')
+          .insert(defaultPlans)
+          .select();
+          
+        if (!seedError && newPlans) {
+          data = newPlans;
+        }
+      }
+      
+      setPlans(data || []);
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getIcon = (name: string) => {
+    if (name.toLowerCase().includes('básico')) return Scissors;
+    if (name.toLowerCase().includes('premium')) return Sparkles;
+    return Star;
+  };
+
+  const getFeatures = (plan: any) => {
+    return [
+      `${plan.credits_per_month} cortes por mês`,
+      "Válido por 30 dias",
+      "Qualquer barbearia parceira",
+      "Código de validação seguro",
+      plan.price > 60 ? "Prioridade no atendimento" : null,
+      plan.price > 100 ? "Acesso a serviços exclusivos" : null
+    ].filter(Boolean);
+  };
+
+  if (loading) {
+    return (
+      <section id="planos" className="py-24 relative min-h-[600px] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </section>
+    );
+  }
+
   return (
     <section id="planos" className="py-24 relative">
       <div className="section-container">
@@ -67,22 +109,25 @@ export function Plans() {
         {/* Plans Grid */}
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {plans.map((plan, index) => {
-            const Icon = plan.icon;
+            const Icon = getIcon(plan.name);
+            const isPopular = plan.name.toLowerCase().includes('popular');
+            const features = getFeatures(plan);
+
             return (
               <div
-                key={plan.name}
+                key={plan.id}
                 className={`relative rounded-2xl p-8 transition-all duration-300 card-hover ${
-                  plan.popular
+                  isPopular
                     ? "bg-gradient-card border-2 border-primary glow-gold"
                     : "bg-card border border-border"
                 }`}
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
-                {plan.popular && <div className="badge-popular">Mais Popular</div>}
+                {isPopular && <div className="badge-popular">Mais Popular</div>}
 
                 {/* Icon */}
-                <div className={`icon-container mb-6 ${!plan.popular && "bg-secondary"}`}>
-                  <Icon className={`w-7 h-7 ${plan.popular ? "text-primary-foreground" : "text-primary"}`} />
+                <div className={`icon-container mb-6 ${!isPopular && "bg-secondary"}`}>
+                  <Icon className={`w-7 h-7 ${isPopular ? "text-primary-foreground" : "text-primary"}`} />
                 </div>
 
                 {/* Plan Info */}
@@ -92,19 +137,21 @@ export function Plans() {
                 {/* Price */}
                 <div className="mb-6">
                   <span className="text-sm text-muted-foreground">R$</span>
-                  <span className="font-display text-5xl text-gold-gradient">{plan.price}</span>
+                  <span className="font-display text-5xl text-gold-gradient">
+                    {typeof plan.price === 'number' ? plan.price.toFixed(2).replace('.', ',') : plan.price}
+                  </span>
                   <span className="text-muted-foreground">/mês</span>
                 </div>
 
                 {/* Credits highlight */}
                 <div className="bg-primary/10 rounded-lg p-3 mb-6 text-center">
-                  <span className="font-bold text-primary">{plan.credits} cortes</span>
+                  <span className="font-bold text-primary">{plan.credits_per_month} cortes</span>
                   <span className="text-muted-foreground"> por mês</span>
                 </div>
 
                 {/* Features */}
                 <ul className="space-y-3 mb-8">
-                  {plan.features.map((feature) => (
+                  {features.map((feature: any) => (
                     <li key={feature} className="flex items-center gap-3">
                       <Check className="w-5 h-5 text-primary flex-shrink-0" />
                       <span className="text-sm text-secondary-foreground">{feature}</span>
@@ -114,12 +161,12 @@ export function Plans() {
 
                 {/* CTA */}
                 <Button
-                  variant={plan.popular ? "hero" : "outline"}
+                  variant={isPopular ? "hero" : "outline"}
                   className="w-full"
                   size="lg"
-                  asChild
+                  onClick={() => user ? navigate(`/checkout/${plan.id}`) : navigate('/login')}
                 >
-                  <Link to="/cadastro">Assinar Agora</Link>
+                  Assinar Agora
                 </Button>
               </div>
             );

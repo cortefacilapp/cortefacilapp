@@ -13,9 +13,11 @@ import PartnerSalonsPage from "./pages/PartnerSalonsPage";
 import TermsPage from "./pages/TermsPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import TestConnection from "./pages/TestConnection";
+import AdminSetup from "./pages/AdminSetup";
 import Auth from "./pages/Auth";
 import SalonRegister from "./pages/SalonRegister";
 import Dashboard from "./pages/Dashboard";
+import Checkout from "./pages/Checkout";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +32,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/planos" element={<PlansPage />} />
+            <Route path="/checkout/:planId" element={<Checkout />} />
             <Route path="/para-saloes" element={<ForSalonsPage />} />
             <Route path="/como-funciona" element={<HowItWorksPage />} />
             <Route path="/faq" element={<FAQPage />} />
@@ -37,6 +40,7 @@ const App = () => (
             <Route path="/termos" element={<TermsPage />} />
             <Route path="/privacidade" element={<PrivacyPage />} />
             <Route path="/test-connection" element={<TestConnection />} />
+            <Route path="/admin-setup" element={<AdminSetup />} />
             <Route path="/login" element={<Auth />} />
             <Route path="/cadastro" element={<Auth />} />
             <Route path="/cadastro-salao" element={<SalonRegister />} />
