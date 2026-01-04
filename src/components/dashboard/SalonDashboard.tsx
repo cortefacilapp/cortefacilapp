@@ -5,6 +5,7 @@ import { SalonSubscribers } from "./salon/SalonSubscribers";
 import { SalonHistory } from "./salon/SalonHistory";
 import { SalonFinancial } from "./salon/SalonFinancial";
 import { SalonProfile } from "./salon/SalonProfile";
+import { SalonOwnerProfile } from "./salon/SalonOwnerProfile";
 
 export function SalonDashboard() {
   return (
@@ -15,6 +16,7 @@ export function SalonDashboard() {
       <Route path="historico" element={<SalonHistory />} />
       <Route path="meu-financeiro" element={<SalonFinancial />} />
       <Route path="meu-salao" element={<SalonProfile />} />
+      <Route path="perfil" element={<SalonOwnerProfile />} />
     </Routes>
   );
 }

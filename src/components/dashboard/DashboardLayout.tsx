@@ -16,7 +16,8 @@ import {
   DollarSign,
   QrCode,
   LayoutDashboard,
-  Store
+  Store,
+  User
 } from "lucide-react";
 
 interface DashboardLayoutProps {
@@ -52,6 +53,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           { icon: History, label: "Histórico", href: "/dashboard/historico" },
           { icon: DollarSign, label: "Financeiro", href: "/dashboard/meu-financeiro" },
           { icon: Settings, label: "Meu Salão", href: "/dashboard/meu-salao" },
+          { icon: User, label: "Perfil", href: "/dashboard/perfil" },
         ];
       case "subscriber":
       default:
