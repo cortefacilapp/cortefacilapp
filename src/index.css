@@ -1,0 +1,267 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* BarberClub - Premium Barbershop Subscription SaaS */
+/* Dark masculine theme with amber/gold accents */
+
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    /* Core palette - Dark with amber accents */
+    --background: 20 14% 8%;
+    --foreground: 40 20% 95%;
+
+    --card: 20 12% 12%;
+    --card-foreground: 40 20% 95%;
+
+    --popover: 20 12% 10%;
+    --popover-foreground: 40 20% 95%;
+
+    /* Amber/Gold primary */
+    --primary: 38 92% 50%;
+    --primary-foreground: 20 14% 8%;
+
+    /* Warm gray secondary */
+    --secondary: 20 8% 18%;
+    --secondary-foreground: 40 15% 85%;
+
+    --muted: 20 8% 15%;
+    --muted-foreground: 40 10% 55%;
+
+    --accent: 38 85% 45%;
+    --accent-foreground: 20 14% 8%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 40 20% 95%;
+
+    --border: 20 10% 20%;
+    --input: 20 10% 18%;
+    --ring: 38 92% 50%;
+
+    --radius: 0.75rem;
+
+    /* Custom tokens */
+    --gold: 38 92% 50%;
+    --gold-light: 40 90% 60%;
+    --gold-dark: 35 90% 40%;
+    --bronze: 30 60% 35%;
+    --cream: 40 30% 90%;
+    
+    /* Gradients */
+    --gradient-gold: linear-gradient(135deg, hsl(38, 92%, 50%) 0%, hsl(30, 85%, 45%) 100%);
+    --gradient-dark: linear-gradient(180deg, hsl(20, 14%, 8%) 0%, hsl(20, 12%, 5%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(20, 12%, 14%) 0%, hsl(20, 12%, 10%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsla(20, 14%, 8%, 0) 0%, hsl(20, 14%, 8%) 100%);
+    
+    /* Shadows */
+    --shadow-gold: 0 4px 30px -5px hsla(38, 92%, 50%, 0.3);
+    --shadow-card: 0 10px 40px -10px hsla(0, 0%, 0%, 0.5);
+    --shadow-elevated: 0 25px 50px -12px hsla(0, 0%, 0%, 0.6);
+
+    /* Sidebar */
+    --sidebar-background: 20 12% 10%;
+    --sidebar-foreground: 40 20% 95%;
+    --sidebar-primary: 38 92% 50%;
+    --sidebar-primary-foreground: 20 14% 8%;
+    --sidebar-accent: 20 8% 15%;
+    --sidebar-accent-foreground: 40 20% 95%;
+    --sidebar-border: 20 10% 18%;
+    --sidebar-ring: 38 92% 50%;
+  }
+
+  .dark {
+    /* Same as root - this is a dark-first design */
+    --background: 20 14% 8%;
+    --foreground: 40 20% 95%;
+    --card: 20 12% 12%;
+    --card-foreground: 40 20% 95%;
+    --popover: 20 12% 10%;
+    --popover-foreground: 40 20% 95%;
+    --primary: 38 92% 50%;
+    --primary-foreground: 20 14% 8%;
+    --secondary: 20 8% 18%;
+    --secondary-foreground: 40 15% 85%;
+    --muted: 20 8% 15%;
+    --muted-foreground: 40 10% 55%;
+    --accent: 38 85% 45%;
+    --accent-foreground: 20 14% 8%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 40 20% 95%;
+    --border: 20 10% 20%;
+    --input: 20 10% 18%;
+    --ring: 38 92% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Bebas Neue', Impact, sans-serif;
+    letter-spacing: 0.02em;
+  }
+}
+
+@layer components {
+  /* Glass effect */
+  .glass {
+    @apply bg-card/80 backdrop-blur-xl border border-border/50;
+  }
+
+  /* Gold text gradient */
+  .text-gold-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(40, 90%, 60%) 0%, hsl(38, 92%, 50%) 50%, hsl(30, 85%, 45%) 100%);
+  }
+
+  /* Glow effects */
+  .glow-gold {
+    box-shadow: 0 0 40px -10px hsl(38, 92%, 50%);
+  }
+
+  .glow-gold-sm {
+    box-shadow: 0 0 20px -5px hsl(38, 92%, 50%);
+  }
+
+  /* Animated border */
+  .border-glow {
+    position: relative;
+  }
+
+  .border-glow::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, hsl(38, 92%, 50%), transparent, hsl(38, 92%, 50%));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
+  /* Hover card lift */
+  .card-hover {
+    @apply transition-all duration-300;
+  }
+
+  .card-hover:hover {
+    @apply -translate-y-1;
+    box-shadow: var(--shadow-elevated);
+  }
+
+  /* Section container */
+  .section-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Feature icon container */
+  .icon-container {
+    @apply w-14 h-14 rounded-xl flex items-center justify-center;
+    background: var(--gradient-gold);
+  }
+
+  /* Stats number */
+  .stat-number {
+    font-family: 'Bebas Neue', Impact, sans-serif;
+    @apply text-5xl md:text-6xl text-gold-gradient;
+  }
+
+  /* Input focus ring */
+  .input-focus {
+    @apply focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all;
+  }
+
+  /* Plan card popular badge */
+  .badge-popular {
+    @apply absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 text-xs font-bold uppercase tracking-wider rounded-full;
+    background: var(--gradient-gold);
+    color: hsl(20, 14%, 8%);
+  }
+}
+
+@layer utilities {
+  /* Fade in animation */
+  .animate-fade-in {
+    animation: fadeIn 0.6s ease-out forwards;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Slide up animation */
+  .animate-slide-up {
+    animation: slideUp 0.5s ease-out forwards;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Pulse gold */
+  .animate-pulse-gold {
+    animation: pulseGold 2s ease-in-out infinite;
+  }
+
+  @keyframes pulseGold {
+    0%, 100% {
+      box-shadow: 0 0 20px -5px hsla(38, 92%, 50%, 0.5);
+    }
+    50% {
+      box-shadow: 0 0 40px -5px hsla(38, 92%, 50%, 0.8);
+    }
+  }
+
+  /* Shimmer effect */
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsla(40, 90%, 60%, 0.1),
+      transparent
+    );
+    animation: shimmer 3s infinite;
+  }
+
+  @keyframes shimmer {
+    to {
+      left: 100%;
+    }
+  }
+}
