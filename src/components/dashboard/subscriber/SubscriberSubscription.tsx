@@ -139,8 +139,8 @@ export function SubscriberSubscription() {
               </div>
               <div className="md:col-span-3 pt-4 border-t border-border">
                 <p className="text-sm text-muted-foreground mb-1">Salão Vinculado</p>
-                <p className="font-medium text-lg">{subscription.salon.name}</p>
-                <p className="text-sm text-muted-foreground">{subscription.salon.address}</p>
+                <p className="font-medium text-lg">{subscription.salon?.name || 'Nenhum salão vinculado'}</p>
+                <p className="text-sm text-muted-foreground">{subscription.salon?.address || ''}</p>
               </div>
             </CardContent>
           </Card>
