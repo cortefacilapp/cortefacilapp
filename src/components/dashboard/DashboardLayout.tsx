@@ -159,10 +159,42 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className="p-6 lg:p-8">
+        <main className="p-6 pb-24 lg:p-8 lg:pb-8">
           {children}
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border lg:hidden safe-area-bottom">
+        <div className="flex items-center justify-around h-16 px-2">
+          {navItems.slice(0, 4).map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                to={item.href}
+                className={`flex flex-col items-center justify-center w-full h-full gap-1 text-xs font-medium transition-colors ${
+                  isActive 
+                    ? "text-primary" 
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className={`w-5 h-5 ${isActive ? "fill-current" : ""}`} />
+                <span className="truncate max-w-[64px]">{item.label}</span>
+              </Link>
+            );
+          })}
+          
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="flex flex-col items-center justify-center w-full h-full gap-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Menu className="w-5 h-5" />
+            <span>Menu</span>
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }

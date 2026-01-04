@@ -21,7 +21,7 @@ const benefits = [
   {
     icon: Banknote,
     title: "80% do Valor",
-    description: "Você recebe 80% do valor de cada corte realizado",
+    description: "Você recebe 80% do valor de cada assinatura realizada",
   },
   {
     icon: Clock,
