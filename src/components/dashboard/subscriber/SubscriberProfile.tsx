@@ -4,10 +4,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { User, Lock } from "lucide-react";
+import { User } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { formatCPF, formatDate, parseDateToISO, formatISOToDate } from "@/lib/validators";
 
 export function SubscriberProfile() {
   const { user } = useAuth();
@@ -19,7 +20,8 @@ export function SubscriberProfile() {
     email: "",
     phone: "",
     cpf: "",
-    address: ""
+    address: "",
+    birth_date: ""
   });
 
   // Password State
@@ -50,8 +52,9 @@ export function SubscriberProfile() {
           full_name: profileData.full_name || "",
           email: profileData.email || user.email || "",
           phone: profileData.phone || "",
-          cpf: profileData.cpf || "",
-          address: profileData.address || ""
+          cpf: formatCPF(profileData.cpf || ""),
+          address: profileData.address || "",
+          birth_date: formatISOToDate(profileData.birth_date || "")
         });
       }
     } catch (error) {
@@ -63,14 +66,18 @@ export function SubscriberProfile() {
   const handleUpdateProfile = async () => {
     if (!user) return;
     setLoading(true);
+
+    const formattedBirthDate = parseDateToISO(profile.birth_date);
+
     try {
       const { error } = await supabase
         .from('profiles')
         .update({
           full_name: profile.full_name,
           phone: profile.phone,
-          cpf: profile.cpf,
+          cpf: profile.cpf.replace(/\D/g, ""), // Remove formatting before saving
           address: profile.address,
+          birth_date: formattedBirthDate,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
@@ -163,21 +170,34 @@ export function SubscriberProfile() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="birthDate">Data de Nascimento</Label>
+                  <Input 
+                    id="birthDate" 
+                    placeholder="DD/MM/AAAA"
+                    value={profile.birth_date} 
+                    onChange={(e) => setProfile({...profile, birth_date: formatDate(e.target.value)})}
+                    maxLength={10}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <Label htmlFor="cpf">CPF</Label>
                   <Input 
                     id="cpf" 
                     value={profile.cpf} 
-                    onChange={(e) => setProfile({...profile, cpf: e.target.value})}
+                    onChange={(e) => setProfile({...profile, cpf: formatCPF(e.target.value)})}
+                    maxLength={14}
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="address">Endereço</Label>
-                <Input 
-                  id="address" 
-                  value={profile.address} 
-                  onChange={(e) => setProfile({...profile, address: e.target.value})}
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="address">Endereço</Label>
+                  <Input 
+                    id="address" 
+                    value={profile.address} 
+                    onChange={(e) => setProfile({...profile, address: e.target.value})}
+                  />
+                </div>
               </div>
             </CardContent>
             <CardFooter>

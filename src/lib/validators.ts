@@ -119,3 +119,9 @@ export const parseDateToISO = (date: string) => {
   const [day, month, year] = date.split('/');
   return `${year}-${month}-${day}`;
 };
+
+export const formatISOToDate = (isoDate: string) => {
+  if (!isoDate) return "";
+  const [year, month, day] = isoDate.split('-');
+  return `${day}/${month}/${year}`;
+};
