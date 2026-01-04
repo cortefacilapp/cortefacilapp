@@ -73,8 +73,7 @@ export function SalonSubscribers() {
           status,
           current_credits,
           created_at,
-          plan:plans(name),
-          profile:profiles(full_name, email, phone)
+          plan:plans(name)
         `)
         .eq('salon_id', salon.id)
         .eq('status', 'active')
@@ -82,7 +81,31 @@ export function SalonSubscribers() {
 
       if (subsError) throw subsError;
 
-      setSubscribers(subs as any || []);
+      // 3. Fetch profiles manually since there might be no direct FK
+      const userIds = subs.map(s => s.user_id);
+      
+      let profilesMap: Record<string, any> = {};
+      
+      if (userIds.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, phone')
+          .in('id', userIds);
+          
+        if (!profilesError && profiles) {
+          profilesMap = profiles.reduce((acc, profile) => {
+            acc[profile.id] = profile;
+            return acc;
+          }, {} as Record<string, any>);
+        }
+      }
+
+      const subscribersWithProfiles = subs.map(sub => ({
+        ...sub,
+        profile: profilesMap[sub.user_id] || { full_name: 'Usuário', email: '', phone: '' }
+      }));
+
+      setSubscribers(subscribersWithProfiles as any || []);
     } catch (error) {
       console.error('Error fetching subscribers:', error);
     } finally {

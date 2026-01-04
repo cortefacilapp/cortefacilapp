@@ -89,8 +89,11 @@ export function SalonValidate() {
       }
 
       // Check if subscription is for this salon
-      if (codeData.subscription.salon_id !== salon.id) {
+      if (codeData.subscription && codeData.subscription.salon_id !== salon.id) {
         toast.error("Este código não é válido para este salão");
+        return;
+      } else if (!codeData.subscription) {
+        toast.error("Assinatura não encontrada");
         return;
       }
 

@@ -32,6 +32,34 @@ export function SubscriberCode() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (!currentCode) return;
+
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'haircut_codes',
+          filter: `id=eq.${currentCode.id}`,
+        },
+        (payload) => {
+          if (payload.new.is_used) {
+             toast.success("Código validado com sucesso!");
+             setCurrentCode(null);
+             fetchData(); // Refresh credits
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentCode]);
+
   const fetchData = async () => {
     if (!user) return;
 
