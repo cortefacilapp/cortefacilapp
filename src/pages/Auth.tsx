@@ -3,18 +3,27 @@ import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Scissors, Mail, Lock, User, ArrowLeft, Loader2 } from "lucide-react";
+import { Scissors, Mail, Lock, User, ArrowLeft, Loader2, Calendar, CreditCard } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
 import { z } from "zod";
+import { validateCPF, formatCPF, formatDate, validateDate, parseDateToISO } from "@/lib/validators";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
 });
 
-const signupSchema = loginSchema.extend({
+const signupSchema = z.object({
+  email: z.string().email("Email inválido"),
+  password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  confirmPassword: z.string(),
   fullName: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
+  cpf: z.string().refine(validateCPF, "CPF inválido"),
+  birthDate: z.string().refine(validateDate, "Data de nascimento inválida"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "As senhas não coincidem",
+  path: ["confirmPassword"],
 });
 
 export default function Auth() {
@@ -22,7 +31,10 @@ export default function Auth() {
   const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [cpf, setCpf] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -35,13 +47,21 @@ export default function Auth() {
     }
   }, [user, navigate]);
 
+  const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCpf(formatCPF(e.target.value));
+  };
+
+  const handleBirthDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setBirthDate(formatDate(e.target.value));
+  };
+
   const validateForm = () => {
     setErrors({});
     try {
       if (isLogin) {
         loginSchema.parse({ email, password });
       } else {
-        signupSchema.parse({ email, password, fullName });
+        signupSchema.parse({ email, password, confirmPassword, fullName, cpf, birthDate });
       }
       return true;
     } catch (error) {
@@ -79,7 +99,8 @@ export default function Auth() {
           navigate("/dashboard");
         }
       } else {
-        const { error } = await signUp(email, password, fullName);
+        const formattedDate = parseDateToISO(birthDate);
+        const { error } = await signUp(email, password, fullName, 'subscriber', cpf, formattedDate || undefined);
         if (error) {
           if (error.message.includes("User already registered")) {
             toast.error("Este email já está cadastrado");
@@ -136,23 +157,63 @@ export default function Auth() {
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             {!isLogin && (
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Nome completo</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    id="fullName"
-                    type="text"
-                    placeholder="Seu nome"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="pl-10 h-12 bg-card border-border"
-                  />
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Nome completo</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="fullName"
+                      type="text"
+                      placeholder="Seu nome"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="pl-10 h-12 bg-card border-border"
+                    />
+                  </div>
+                  {errors.fullName && (
+                    <p className="text-sm text-destructive">{errors.fullName}</p>
+                  )}
                 </div>
-                {errors.fullName && (
-                  <p className="text-sm text-destructive">{errors.fullName}</p>
-                )}
-              </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cpf">CPF</Label>
+                  <div className="relative">
+                    <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="cpf"
+                      type="text"
+                      placeholder="000.000.000-00"
+                      value={cpf}
+                      onChange={handleCpfChange}
+                      maxLength={14}
+                      className="pl-10 h-12 bg-card border-border"
+                    />
+                  </div>
+                  {errors.cpf && (
+                    <p className="text-sm text-destructive">{errors.cpf}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="birthDate">Data de Nascimento</Label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="birthDate"
+                      type="text"
+                      placeholder="DD/MM/AAAA"
+                      value={birthDate}
+                      onChange={handleBirthDateChange}
+                      maxLength={10}
+                      className="pl-10 h-12 bg-card border-border"
+                    />
+                  </div>
+                  {errors.birthDate && (
+                    <p className="text-sm text-destructive">{errors.birthDate}</p>
+                  )}
+                </div>
+              </>
             )}
 
             <div className="space-y-2">
@@ -191,6 +252,26 @@ export default function Auth() {
               )}
             </div>
 
+            {!isLogin && (
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirmar Senha</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="pl-10 h-12 bg-card border-border"
+                  />
+                </div>
+                {errors.confirmPassword && (
+                  <p className="text-sm text-destructive">{errors.confirmPassword}</p>
+                )}
+              </div>
+            )}
+
             <Button 
               type="submit" 
               variant="hero" 
@@ -198,26 +279,21 @@ export default function Auth() {
               className="w-full"
               disabled={loading}
             >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Processando...
-                </>
-              ) : isLogin ? (
-                "Entrar"
-              ) : (
-                "Criar Conta"
-              )}
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isLogin ? "ENTRAR" : "CRIAR CONTA"}
             </Button>
           </form>
 
-          {/* Toggle */}
+          {/* Footer */}
           <div className="mt-8 text-center">
             <p className="text-muted-foreground">
-              {isLogin ? "Não tem uma conta?" : "Já tem uma conta?"}{" "}
-              <button
+              {isLogin ? "Não tem uma conta? " : "Já tem uma conta? "}
+              <button 
                 type="button"
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setErrors({});
+                }}
                 className="text-primary font-semibold hover:underline"
               >
                 {isLogin ? "Cadastre-se" : "Entrar"}
@@ -225,35 +301,29 @@ export default function Auth() {
             </p>
           </div>
 
-          {/* Salon Link */}
           <div className="mt-6 text-center">
-            <Link 
-              to="/cadastro-salao" 
-              className="text-sm text-muted-foreground hover:text-primary transition-colors"
-            >
+            <Link to="/cadastro-salao" className="text-sm text-muted-foreground hover:text-primary transition-colors">
               Sou dono de barbearia →
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Right Side - Decorative */}
-      <div className="hidden lg:block lg:w-1/2 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-background" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-32 h-32 rounded-full bg-gradient-gold mx-auto mb-8 flex items-center justify-center animate-pulse-gold">
-              <Scissors className="w-16 h-16 text-primary-foreground" />
-            </div>
-            <h2 className="font-display text-5xl mb-4">
-              ESTILO
-              <br />
-              <span className="text-gold-gradient">GARANTIDO</span>
-            </h2>
-            <p className="text-muted-foreground max-w-xs mx-auto">
-              Assine e tenha acesso a cortes de cabelo premium todos os meses
-            </p>
-          </div>
+      {/* Right Side - Image */}
+      <div className="hidden lg:block lg:w-1/2 relative">
+        <div className="absolute inset-0 bg-black/60 z-10" />
+        <img 
+          src="/auth-bg.svg" 
+          alt="Barber Shop" 
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        <div className="absolute bottom-20 left-20 right-20 z-20 text-white">
+          <h2 className="font-display text-5xl mb-6 leading-tight">
+            Estilo e tradição em cada corte.
+          </h2>
+          <p className="text-lg text-white/80">
+            Junte-se à maior comunidade de barbearias e clientes do Brasil. Agende seu horário com os melhores profissionais.
+          </p>
         </div>
       </div>
     </div>
