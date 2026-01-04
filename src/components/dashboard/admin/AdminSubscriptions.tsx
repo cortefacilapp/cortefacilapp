@@ -48,25 +48,44 @@ export function AdminSubscriptions() {
   const fetchSubscriptions = async () => {
     setLoading(true);
     try {
-      // Fetch subscriptions with related data
-      const { data, error } = await supabase
+      // Fetch subscriptions with related data (plans and salons)
+      // We fetch profiles manually to avoid Foreign Key issues (PGRST200)
+      const { data: subsData, error: subsError } = await supabase
         .from('subscriptions')
         .select(`
           *,
           plan:plans(name, price, credits_per_month),
-          salon:salons(name),
-          profile:profiles!user_id(full_name, email)
+          salon:salons(name)
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (subsError) throw subsError;
+
+      // Manually fetch profiles
+      const userIds = [...new Set((subsData || []).map(sub => sub.user_id).filter(Boolean))];
+      
+      let profilesMap: Record<string, any> = {};
+      
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', userIds);
+          
+        if (!profilesError && profilesData) {
+          profilesMap = profilesData.reduce((acc: any, profile: any) => {
+            acc[profile.id] = profile;
+            return acc;
+          }, {});
+        }
+      }
 
       // Transform data to match interface
-      const transformedData: Subscription[] = (data || []).map((sub: any) => ({
+      const transformedData: Subscription[] = (subsData || []).map((sub: any) => ({
         ...sub,
         plan: sub.plan,
         salon: sub.salon,
-        profile: sub.profile
+        profile: profilesMap[sub.user_id] || null
       }));
 
       setSubscriptions(transformedData);

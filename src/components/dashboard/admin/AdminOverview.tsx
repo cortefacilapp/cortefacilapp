@@ -56,9 +56,9 @@ export function AdminOverview() {
 
   const fetchAdminData = async () => {
     try {
-      // Fetch subscriber count
+      // Fetch subscriber count using profiles table instead of user_roles
       const { count: subscriberCount } = await supabase
-        .from('user_roles')
+        .from('profiles')
         .select('*', { count: 'exact', head: true })
         .eq('role', 'subscriber');
 

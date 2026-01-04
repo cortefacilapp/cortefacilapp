@@ -53,16 +53,36 @@ export function AdminFinancial() {
   const fetchFinancialData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch incoming payments (subscriptions)
-      const { data: paymentsData, error: paymentsError } = await supabase
+      // 1. Fetch incoming payments (subscriptions) - Manual join to avoid PGRST200
+      const { data: paymentsRaw, error: paymentsError } = await supabase
         .from('payments')
-        .select(`
-          *,
-          profile:profiles!user_id(full_name, email)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (paymentsError) throw paymentsError;
+
+      // Manually fetch profiles
+      const userIds = Array.from(new Set(paymentsRaw.map(p => p.user_id).filter(Boolean)));
+      let profilesMap: Record<string, any> = {};
+
+      if (userIds.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', userIds);
+          
+        if (!profilesError && profiles) {
+          profilesMap = profiles.reduce((acc, profile) => {
+            acc[profile.id] = profile;
+            return acc;
+          }, {} as Record<string, any>);
+        }
+      }
+
+      const paymentsData = paymentsRaw.map(payment => ({
+        ...payment,
+        profile: profilesMap[payment.user_id] || { full_name: 'Usuário Desconhecido', email: 'N/A' }
+      }));
 
       // 2. Fetch outgoing payouts (salons)
       const { data: payoutsData, error: payoutsError } = await supabase

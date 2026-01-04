@@ -41,27 +41,11 @@ export function AdminSubscribers() {
   const fetchSubscribers = async () => {
     setLoading(true);
     try {
-      // 1. Fetch user IDs with 'subscriber' role
-      const { data: roles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .eq('role', 'subscriber');
-
-      if (rolesError) throw rolesError;
-
-      const subscriberIds = roles.map((r: { user_id: any }) => r.user_id);
-
-      if (subscriberIds.length === 0) {
-        setSubscribers([]);
-        setLoading(false);
-        return;
-      }
-
-      // 2. Fetch profiles for these IDs
+      // 1. Fetch profiles with 'subscriber' role directly
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('*')
-        .in('id', subscriberIds)
+        .eq('role', 'subscriber')
         .order('created_at', { ascending: false });
 
       if (profilesError) throw profilesError;
