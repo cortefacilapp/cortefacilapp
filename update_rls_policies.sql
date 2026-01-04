@@ -8,6 +8,16 @@ create policy "Salon owners can view subscriptions for their salons" on public.s
   )
 );
 
+-- Enable Salon Owners to update credits for subscriptions linked to their salons
+drop policy if exists "Salon owners can update credits" on public.subscriptions;
+create policy "Salon owners can update credits" on public.subscriptions for update using (
+  exists (
+    select 1 from public.salons s 
+    where s.id = subscriptions.salon_id 
+    and s.owner_id = auth.uid()
+  )
+);
+
 -- Enable Salon Owners to view codes linked to their salons (for validation)
 drop policy if exists "Salon owners can view codes for their salons" on public.haircut_codes;
 create policy "Salon owners can view codes for their salons" on public.haircut_codes for select using (

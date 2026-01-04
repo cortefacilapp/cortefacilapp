@@ -69,9 +69,11 @@ export function SubscriberCode() {
         .select('id, current_credits')
         .eq('user_id', user.id)
         .eq('status', 'active')
-        .single();
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (subError && subError.code !== 'PGRST116') throw subError;
+      if (subError) throw subError;
       setSubscription(subData);
 
       if (subData) {
@@ -96,6 +98,19 @@ export function SubscriberCode() {
 
   const generateCode = async () => {
     if (!subscription) return;
+
+    // Double check credits before generating
+    const { data: latestSub } = await supabase
+      .from('subscriptions')
+      .select('current_credits')
+      .eq('id', subscription.id)
+      .single();
+
+    if (latestSub && latestSub.current_credits <= 0) {
+      toast.error("Você não tem créditos disponíveis");
+      setSubscription(prev => prev ? ({ ...prev, current_credits: 0 }) : null);
+      return;
+    }
 
     if (subscription.current_credits <= 0) {
       toast.error("Você não tem créditos disponíveis");

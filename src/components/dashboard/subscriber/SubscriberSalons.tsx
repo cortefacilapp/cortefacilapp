@@ -42,9 +42,11 @@ export function SubscriberSalons() {
         .select('id, salon_id, status')
         .eq('user_id', user?.id)
         .eq('status', 'active')
-        .single();
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (subError && subError.code !== 'PGRST116') throw subError;
+      if (subError) throw subError;
       setSubscription(subData);
 
       // 2. Fetch All Salons

@@ -30,6 +30,26 @@ export function SubscriberOverview() {
   useEffect(() => {
     if (user) {
       fetchSubscription();
+
+      const channel = supabase
+        .channel('schema-db-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'subscriptions',
+            filter: `user_id=eq.${user.id}`,
+          },
+          (payload) => {
+            fetchSubscription();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [user]);
 
@@ -46,9 +66,11 @@ export function SubscriberOverview() {
         `)
         .eq('user_id', user.id)
         .eq('status', 'active')
-        .single();
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error('Error fetching subscription:', error);
       }
 
@@ -101,7 +123,7 @@ export function SubscriberOverview() {
                 {subscription.current_credits}
               </span>
               <span className="text-muted-foreground">
-                / {subscription.plan.credits_per_month}
+                / {subscription.plan?.credits_per_month || '?'}
               </span>
             </div>
           </CardContent>
@@ -115,7 +137,7 @@ export function SubscriberOverview() {
             <CreditCard className="w-5 h-5 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{subscription.plan.name}</div>
+            <div className="text-2xl font-bold">{subscription.plan?.name || 'Plano Desconhecido'}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {subscription.salon ? subscription.salon.name : 'Nenhum salão vinculado'}
             </p>

@@ -139,28 +139,59 @@ export default function Checkout() {
       const endDate = new Date();
       endDate.setDate(endDate.getDate() + (plan.duration_days || 30));
 
-      // 1. Create Subscription
-      const { data: subData, error: subError } = await supabase
+      // 1. Create or Update Subscription
+      let subId;
+      
+      // Check if user already has a subscription (active or not)
+      const { data: existingSub } = await supabase
         .from('subscriptions')
-        .insert({
-          user_id: user?.id,
-          plan_id: plan.id,
-          status: 'active',
-          current_credits: plan.credits_per_month,
-          start_date: startDate.toISOString(),
-          end_date: endDate.toISOString()
-        })
-        .select()
-        .single();
+        .select('id')
+        .eq('user_id', user?.id)
+        .maybeSingle();
 
-      if (subError) throw subError;
+      if (existingSub) {
+        // Update existing subscription
+        const { data: updatedSub, error: updateError } = await supabase
+          .from('subscriptions')
+          .update({
+            plan_id: plan.id,
+            status: 'active',
+            current_credits: plan.credits_per_month,
+            start_date: startDate.toISOString(),
+            end_date: endDate.toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingSub.id)
+          .select()
+          .single();
+
+        if (updateError) throw updateError;
+        subId = updatedSub.id;
+      } else {
+        // Create new subscription
+        const { data: newSub, error: insertError } = await supabase
+          .from('subscriptions')
+          .insert({
+            user_id: user?.id,
+            plan_id: plan.id,
+            status: 'active',
+            current_credits: plan.credits_per_month,
+            start_date: startDate.toISOString(),
+            end_date: endDate.toISOString()
+          })
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+        subId = newSub.id;
+      }
 
       // 2. Record Payment
       const { error: payError } = await supabase
         .from('payments')
         .insert({
           user_id: user?.id,
-          subscription_id: subData.id,
+          subscription_id: subId,
           plan_id: plan.id,
           amount: paymentInfo.transaction_amount,
           status: 'completed',
@@ -168,10 +199,18 @@ export default function Checkout() {
           transaction_id: paymentInfo.id.toString()
         });
 
-      if (payError) console.error("Error recording payment:", payError);
+      if (payError) {
+        // Log error but don't fail the whole process since subscription is active
+        console.error("Error recording payment:", payError);
+      }
 
       toast.success("Assinatura ativada com sucesso!");
-      navigate("/dashboard");
+      
+      // Force redirect to dashboard
+      setTimeout(() => {
+        window.location.href = "/dashboard";
+      }, 1500);
+      
     } catch (error) {
       console.error("Error activating subscription:", error);
       toast.error("Erro ao ativar assinatura. Entre em contato com o suporte.");

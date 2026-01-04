@@ -117,12 +117,18 @@ export function SalonValidate() {
         .eq('id', codeData.id);
 
       // Decrement credits
-      await supabase
+      const { error: updateError } = await supabase
         .from('subscriptions')
         .update({ 
           current_credits: codeData.subscription.current_credits - 1 
         })
         .eq('id', codeData.subscription_id);
+
+      if (updateError) {
+        console.error('Error updating credits:', updateError);
+        toast.error("Erro ao atualizar créditos do assinante");
+        return;
+      }
 
       // Create haircut history record
       await supabase
