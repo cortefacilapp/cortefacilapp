@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/mp/:match*",
+      "destination": "https://api.mercadopago.com/:match*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

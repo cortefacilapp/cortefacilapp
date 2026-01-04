@@ -66,11 +66,13 @@ export default function Checkout() {
   const createPayment = async () => {
     setProcessing(true);
     try {
-      const response = await fetch("https://api.mercadopago.com/v1/payments", {
+      // Use local proxy path to avoid CORS issues
+      const response = await fetch("/api/mp/v1/payments", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${import.meta.env.VITE_MERCADO_PAGO_ACCESS_TOKEN || "TEST-975584341823172-071915-ab477a799254519366e8baa21ceac4c4-1141410279"}`
+          "Authorization": `Bearer ${import.meta.env.VITE_MERCADO_PAGO_ACCESS_TOKEN || "APP_USR-975584341823172-071915-00f48f8c37f8a370020c33087c915415-1141410279"}`,
+          "X-Idempotency-Key": `${user?.id}_${plan.id}_${Date.now()}`
         },
         body: JSON.stringify({
           transaction_amount: Number(plan.price),
@@ -112,9 +114,10 @@ export default function Checkout() {
     setVerifying(true);
 
     try {
-      const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentData.id}`, {
+      // Use local proxy path to avoid CORS issues
+      const response = await fetch(`/api/mp/v1/payments/${paymentData.id}`, {
         headers: {
-          "Authorization": `Bearer ${import.meta.env.VITE_MERCADO_PAGO_ACCESS_TOKEN || "TEST-975584341823172-071915-ab477a799254519366e8baa21ceac4c4-1141410279"}`
+          "Authorization": `Bearer ${import.meta.env.VITE_MERCADO_PAGO_ACCESS_TOKEN || "APP_USR-975584341823172-071915-00f48f8c37f8a370020c33087c915415-1141410279"}`
         }
       });
       const data = await response.json();
@@ -145,8 +148,7 @@ export default function Checkout() {
           status: 'active',
           current_credits: plan.credits_per_month,
           start_date: startDate.toISOString(),
-          end_date: endDate.toISOString(),
-          price: plan.price
+          end_date: endDate.toISOString()
         })
         .select()
         .single();
@@ -159,6 +161,7 @@ export default function Checkout() {
         .insert({
           user_id: user?.id,
           subscription_id: subData.id,
+          plan_id: plan.id,
           amount: paymentInfo.transaction_amount,
           status: 'completed',
           payment_method: 'pix',

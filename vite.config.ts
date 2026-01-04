@@ -8,6 +8,13 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    proxy: {
+      "/api/mp": {
+        target: "https://api.mercadopago.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/mp/, ""),
+      },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

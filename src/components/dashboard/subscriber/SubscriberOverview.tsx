@@ -115,9 +115,9 @@ export function SubscriberOverview() {
             <CreditCard className="w-5 h-5 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="font-display text-3xl">{subscription.plan.name}</div>
-            <p className="text-muted-foreground">
-              R$ {subscription.plan.price.toFixed(2)}/mês
+            <div className="text-2xl font-bold">{subscription.plan.name}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {subscription.salon ? subscription.salon.name : 'Nenhum salão vinculado'}
             </p>
           </CardContent>
         </Card>
@@ -134,7 +134,7 @@ export function SubscriberOverview() {
               {formatDate(subscription.end_date)}
             </div>
             <p className="text-muted-foreground">
-              {subscription.salon.name}
+              {subscription.salon?.name || 'Salão não vinculado'}
             </p>
           </CardContent>
         </Card>
