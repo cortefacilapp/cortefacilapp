@@ -78,7 +78,7 @@ export default function SalonRegister() {
         formData.email,
         formData.password,
         formData.ownerName,
-        'salon'
+        'salon_owner'
       );
 
       if (signUpError) {

@@ -45,7 +45,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           { icon: DollarSign, label: "Financeiro", href: "/dashboard/financeiro" },
           { icon: Settings, label: "Configurações", href: "/dashboard/configuracoes" },
         ];
-      case "salon":
+      case "salon_owner":
         return [
           { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
           { icon: QrCode, label: "Validar Corte", href: "/dashboard/validar" },

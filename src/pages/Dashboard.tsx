@@ -35,7 +35,7 @@ export default function Dashboard() {
   return (
     <DashboardLayout>
       {role === "admin" && <AdminDashboard />}
-      {role === "salon" && <SalonDashboard />}
+      {role === "salon_owner" && <SalonDashboard />}
       {role === "subscriber" && <SubscriberDashboard />}
       {!role && (
         <div className="flex items-center justify-center h-[60vh]">

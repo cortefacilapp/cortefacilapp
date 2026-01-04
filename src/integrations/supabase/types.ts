@@ -257,6 +257,7 @@ export type Database = {
           id: string
           phone: string | null
           updated_at: string
+          role: string | null
         }
         Insert: {
           address?: string | null
@@ -425,7 +426,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "subscriber" | "salon"
+      app_role: "admin" | "subscriber" | "salon" | "salon_owner"
       subscription_status: "active" | "inactive" | "cancelled" | "pending"
     }
     CompositeTypes: {
@@ -554,7 +555,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "subscriber", "salon"],
+      app_role: ["admin", "subscriber", "salon", "salon_owner"],
       subscription_status: ["active", "inactive", "cancelled", "pending"],
     },
   },
