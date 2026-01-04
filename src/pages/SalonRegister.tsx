@@ -16,6 +16,10 @@ const salonSchema = z.object({
   phone: z.string().min(10, "Telefone inválido"),
   email: z.string().email("Email inválido"),
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  confirmPassword: z.string().min(6, "A confirmação de senha deve ter pelo menos 6 caracteres"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "As senhas não coincidem",
+  path: ["confirmPassword"],
 });
 
 export default function SalonRegister() {
@@ -26,8 +30,10 @@ export default function SalonRegister() {
     phone: "",
     email: "",
     password: "",
+    confirmPassword: "",
   });
   const [loading, setLoading] = useState(false);
+  const [verifyingCNPJ, setVerifyingCNPJ] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const { signUp, user } = useAuth();
@@ -62,6 +68,48 @@ export default function SalonRegister() {
         setErrors(newErrors);
       }
       return false;
+    }
+  };
+
+  const checkCNPJ = async (cnpj: string) => {
+    const clean = cnpj.replace(/\D/g, "");
+    // Only check if it's a full CNPJ (14 digits)
+    if (clean.length !== 14) return;
+
+    setVerifyingCNPJ(true);
+    try {
+      const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${clean}`);
+      if (!response.ok) {
+        throw new Error('CNPJ não encontrado');
+      }
+      const data = await response.json();
+      toast.success(`CNPJ verificado: ${data.razao_social}`);
+      
+      // Auto-fill salon name if empty
+      if (!formData.salonName) {
+        setFormData(prev => ({ 
+          ...prev, 
+          salonName: data.nome_fantasia || data.razao_social 
+        }));
+      }
+      
+      // Clear any previous CNPJ errors
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.cnpj;
+        return newErrors;
+      });
+
+    } catch (error) {
+      setErrors(prev => ({ ...prev, cnpj: "CNPJ não encontrado na base da Receita Federal" }));
+    } finally {
+      setVerifyingCNPJ(false);
+    }
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (e.target.name === 'cnpj') {
+      checkCNPJ(e.target.value);
     }
   };
 
@@ -193,16 +241,28 @@ export default function SalonRegister() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="cnpj">CPF/CNPJ (opcional)</Label>
+                <Label htmlFor="cnpj">CPF/CNPJ</Label>
+                <div className="relative">
+                {verifyingCNPJ ? (
+                  <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground animate-spin" />
+                ) : (
+                  <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                )}
                 <Input
                   id="cnpj"
                   name="cnpj"
                   type="text"
-                  placeholder="00.000.000/0000-00"
+                  placeholder="000.000.000-00 ou 00.000.000/0000-00"
                   value={formData.cnpj}
                   onChange={handleChange}
-                  className="h-12 bg-card border-border"
+                  onBlur={handleBlur}
+                  className="pl-10 h-12 bg-card border-border"
+                  maxLength={18}
                 />
+              </div>
+                {errors.cnpj && (
+                  <p className="text-sm text-destructive">{errors.cnpj}</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -260,6 +320,25 @@ export default function SalonRegister() {
               </div>
               {errors.password && (
                 <p className="text-sm text-destructive">{errors.password}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirmar Senha</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  placeholder="••••••••"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  className="pl-10 h-12 bg-card border-border"
+                />
+              </div>
+              {errors.confirmPassword && (
+                <p className="text-sm text-destructive">{errors.confirmPassword}</p>
               )}
             </div>
 
