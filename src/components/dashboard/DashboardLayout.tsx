@@ -52,6 +52,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           { icon: Users, label: "Assinantes", href: "/dashboard/meus-assinantes" },
           { icon: History, label: "Histórico", href: "/dashboard/historico" },
           { icon: DollarSign, label: "Financeiro", href: "/dashboard/meu-financeiro" },
+          { icon: Building, label: "Dados Bancários", href: "/dashboard/dados-bancarios" },
           { icon: Settings, label: "Meu Salão", href: "/dashboard/meu-salao" },
           { icon: User, label: "Perfil", href: "/dashboard/perfil" },
         ];
