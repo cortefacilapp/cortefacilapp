@@ -65,6 +65,13 @@ export function SubscriberProfile() {
 
   const handleUpdateProfile = async () => {
     if (!user) return;
+    
+    // Validate required fields
+    if (!profile.cpf) {
+      toast.error("O campo CPF é obrigatório");
+      return;
+    }
+    
     setLoading(true);
 
     const formattedBirthDate = parseDateToISO(profile.birth_date);
@@ -84,6 +91,7 @@ export function SubscriberProfile() {
 
       if (error) throw error;
       toast.success("Perfil atualizado com sucesso!");
+      await fetchUserProfile();
     } catch (error) {
       console.error("Erro ao atualizar perfil:", error);
       toast.error("Erro ao atualizar perfil");
@@ -182,12 +190,13 @@ export function SubscriberProfile() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="cpf">CPF</Label>
+                  <Label htmlFor="cpf">CPF <span className="text-red-500">*</span></Label>
                   <Input 
                     id="cpf" 
                     value={profile.cpf} 
                     onChange={(e) => setProfile({...profile, cpf: formatCPF(e.target.value)})}
                     maxLength={14}
+                    required
                   />
                 </div>
                 <div className="space-y-2">

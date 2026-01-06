@@ -5,11 +5,13 @@ import { AdminSubscribers } from "./admin/AdminSubscribers";
 import { AdminSubscriptions } from "./admin/AdminSubscriptions";
 import { AdminFinancial } from "./admin/AdminFinancial";
 import { AdminSettings } from "./admin/AdminSettings";
+import { AdminUsers } from "./admin/AdminUsers";
 
 export function AdminDashboard() {
   return (
     <Routes>
       <Route index element={<AdminOverview />} />
+      <Route path="cadastros" element={<AdminUsers />} />
       <Route path="saloes" element={<AdminSalons />} />
       <Route path="assinantes" element={<AdminSubscribers />} />
       <Route path="assinaturas" element={<AdminSubscriptions />} />

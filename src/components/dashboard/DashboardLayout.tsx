@@ -17,7 +17,8 @@ import {
   QrCode,
   LayoutDashboard,
   Store,
-  User
+  User,
+  FileText
 } from "lucide-react";
 
 interface DashboardLayoutProps {
@@ -39,6 +40,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       case "admin":
         return [
           { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
+          { icon: FileText, label: "Cadastros", href: "/dashboard/cadastros" },
           { icon: Building, label: "Salões", href: "/dashboard/saloes" },
           { icon: Users, label: "Assinantes", href: "/dashboard/assinantes" },
           { icon: CreditCard, label: "Assinaturas", href: "/dashboard/assinaturas" },

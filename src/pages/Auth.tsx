@@ -19,7 +19,7 @@ const signupSchema = z.object({
   password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
   confirmPassword: z.string(),
   fullName: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
-  cpf: z.string().refine(validateCPF, "CPF inválido"),
+  cpf: z.string().min(1, "O campo CPF é obrigatório").refine(validateCPF, "CPF inválido"),
   birthDate: z.string().refine(validateDate, "Data de nascimento inválida"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "As senhas não coincidem",
@@ -177,7 +177,7 @@ export default function Auth() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="cpf">CPF</Label>
+                  <Label htmlFor="cpf">CPF <span className="text-red-500">*</span></Label>
                   <div className="relative">
                     <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                     <Input
@@ -188,6 +188,7 @@ export default function Auth() {
                       onChange={handleCpfChange}
                       maxLength={14}
                       className="pl-10 h-12 bg-card border-border"
+                      required
                     />
                   </div>
                   {errors.cpf && (
