@@ -108,11 +108,11 @@ export function AdminFinancial() {
 
   // Calculate totals
   const totalIncome = payments
-    .filter(p => p.status === 'paid' || p.status === 'completed') // Assuming 'paid' or 'completed'
+    .filter(p => p.status === 'paid' || p.status === 'completed' || p.status === 'approved')
     .reduce((acc, curr) => acc + Number(curr.amount), 0);
 
   const totalPayouts = payouts
-    .filter(p => p.status === 'paid' || p.status === 'completed')
+    .filter(p => p.status === 'paid' || p.status === 'completed' || p.status === 'approved')
     .reduce((acc, curr) => acc + Number(curr.amount), 0);
     
   const pendingPayouts = payouts

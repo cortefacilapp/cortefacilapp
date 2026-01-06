@@ -110,12 +110,20 @@ export function AdminSubscriptions() {
     }
   };
 
-  const filteredSubscriptions = subscriptions.filter(sub => 
-    sub.profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sub.profile?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sub.salon?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sub.plan?.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredSubscriptions = subscriptions.filter(sub => {
+    if (!searchTerm) return true;
+    
+    const searchLower = searchTerm.toLowerCase();
+    const name = sub.profile?.full_name?.toLowerCase() || '';
+    const email = sub.profile?.email?.toLowerCase() || '';
+    const salon = sub.salon?.name?.toLowerCase() || '';
+    const plan = sub.plan?.name?.toLowerCase() || '';
+    
+    return name.includes(searchLower) || 
+           email.includes(searchLower) || 
+           salon.includes(searchLower) || 
+           plan.includes(searchLower);
+  });
 
   return (
     <div className="space-y-6">

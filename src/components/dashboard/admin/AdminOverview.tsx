@@ -56,9 +56,9 @@ export function AdminOverview() {
 
   const fetchAdminData = async () => {
     try {
-      // Fetch subscriber count using profiles table instead of user_roles
+      // Fetch subscriber count using user_roles table
       const { count: subscriberCount } = await supabase
-        .from('profiles')
+        .from('user_roles')
         .select('*', { count: 'exact', head: true })
         .eq('role', 'subscriber');
 
@@ -79,27 +79,23 @@ export function AdminOverview() {
         .eq('status', 'active');
 
       // Fetch financial data
-      const { data: haircutData } = await supabase
-        .from('haircut_history')
-        .select('amount_to_salon, amount_to_platform');
+      const { data: payments } = await supabase
+        .from('payments')
+        .select('amount, status')
+        .in('status', ['paid', 'completed', 'approved']);
 
-      const totalRevenue = haircutData?.reduce(
-        (sum, h) => sum + (h.amount_to_salon || 0) + (h.amount_to_platform || 0), 
-        0
-      ) || 0;
-
-      const platformRevenue = haircutData?.reduce(
-        (sum, h) => sum + (h.amount_to_platform || 0), 
-        0
-      ) || 0;
+      const totalIncome = payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+      
+      // Platform Revenue is 20% of total subscription payments
+      const platformRevenue = totalIncome * 0.20;
 
       setStats({
         totalSubscribers: subscriberCount || 0,
         totalSalons: totalSalonCount || 0,
         pendingSalons: pendingSalonCount || 0,
         activeSubscriptions: activeSubCount || 0,
-        totalRevenue,
-        platformRevenue,
+        totalRevenue: totalIncome, // This is "Total pago pelos assinantes"
+        platformRevenue: platformRevenue, // This is "Receita da Plataforma" (20%)
       });
 
       setPendingSalons(pendingData || []);
@@ -223,7 +219,7 @@ export function AdminOverview() {
               R$ {stats.platformRevenue.toFixed(2)}
             </div>
             <p className="text-sm text-muted-foreground mt-1">
-              Total: R$ {stats.totalRevenue.toFixed(2)}
+              Total pago pelos assinantes: R$ {stats.totalRevenue.toFixed(2)}
             </p>
           </CardContent>
         </Card>
