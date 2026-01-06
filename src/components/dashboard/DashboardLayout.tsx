@@ -18,7 +18,8 @@ import {
   LayoutDashboard,
   Store,
   User,
-  FileText
+  FileText,
+  Wallet
 } from "lucide-react";
 
 interface DashboardLayoutProps {
@@ -44,6 +45,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           { icon: Building, label: "Salões", href: "/dashboard/saloes" },
           { icon: Users, label: "Assinantes", href: "/dashboard/assinantes" },
           { icon: CreditCard, label: "Assinaturas", href: "/dashboard/assinaturas" },
+          { icon: Wallet, label: "Saques", href: "/dashboard/saques" },
           { icon: DollarSign, label: "Financeiro", href: "/dashboard/financeiro" },
           { icon: Settings, label: "Configurações", href: "/dashboard/configuracoes" },
         ];
