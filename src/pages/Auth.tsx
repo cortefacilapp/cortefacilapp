@@ -3,11 +3,11 @@ import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Scissors, Mail, Lock, User, ArrowLeft, Loader2, Calendar, CreditCard } from "lucide-react";
+import { Scissors, Mail, Lock, User, ArrowLeft, Loader2, Calendar, CreditCard, Phone } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
 import { z } from "zod";
-import { validateCPF, formatCPF, formatDate, validateDate, parseDateToISO } from "@/lib/validators";
+import { validateCPF, formatCPF, formatDate, validateDate, parseDateToISO, formatPhone } from "@/lib/validators";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -21,6 +21,7 @@ const signupSchema = z.object({
   fullName: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
   cpf: z.string().min(1, "O campo CPF é obrigatório").refine(validateCPF, "CPF inválido"),
   birthDate: z.string().refine(validateDate, "Data de nascimento inválida"),
+  phone: z.string().min(14, "Telefone inválido"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "As senhas não coincidem",
   path: ["confirmPassword"],
@@ -35,6 +36,7 @@ export default function Auth() {
   const [fullName, setFullName] = useState("");
   const [cpf, setCpf] = useState("");
   const [birthDate, setBirthDate] = useState("");
+  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -55,13 +57,17 @@ export default function Auth() {
     setBirthDate(formatDate(e.target.value));
   };
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPhone(formatPhone(e.target.value));
+  };
+
   const validateForm = () => {
     setErrors({});
     try {
       if (isLogin) {
         loginSchema.parse({ email, password });
       } else {
-        signupSchema.parse({ email, password, confirmPassword, fullName, cpf, birthDate });
+        signupSchema.parse({ email, password, confirmPassword, fullName, cpf, birthDate, phone });
       }
       return true;
     } catch (error) {
@@ -100,7 +106,7 @@ export default function Auth() {
         }
       } else {
         const formattedDate = parseDateToISO(birthDate);
-        const { error } = await signUp(email, password, fullName, 'subscriber', cpf, formattedDate || undefined);
+        const { error } = await signUp(email, password, fullName, 'subscriber', cpf, formattedDate || undefined, phone);
         if (error) {
           if (error.message.includes("User already registered")) {
             toast.error("Este email já está cadastrado");
@@ -212,6 +218,25 @@ export default function Auth() {
                   </div>
                   {errors.birthDate && (
                     <p className="text-sm text-destructive">{errors.birthDate}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">WhatsApp</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="phone"
+                      type="text"
+                      placeholder="(99) 99999-9999"
+                      value={phone}
+                      onChange={handlePhoneChange}
+                      maxLength={15}
+                      className="pl-10 h-12 bg-card border-border"
+                    />
+                  </div>
+                  {errors.phone && (
+                    <p className="text-sm text-destructive">{errors.phone}</p>
                   )}
                 </div>
               </>
