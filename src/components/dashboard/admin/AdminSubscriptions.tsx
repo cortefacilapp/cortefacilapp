@@ -202,8 +202,13 @@ export function AdminSubscriptions() {
                         {getStatusBadge(sub.status)}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">
-                          {sub.current_credits} / {sub.plan?.credits_per_month}
+                        <div className="flex flex-col">
+                          <span className="font-medium">
+                            {sub.current_credits} / {sub.plan?.credits_per_month}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground uppercase">
+                            Restantes
+                          </span>
                         </div>
                       </TableCell>
                       <TableCell>
