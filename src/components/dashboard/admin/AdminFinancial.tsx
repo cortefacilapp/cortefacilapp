@@ -119,7 +119,7 @@ export function AdminFinancial() {
     .filter(p => p.status === 'pending')
     .reduce((acc, curr) => acc + Number(curr.amount), 0);
 
-  const netRevenue = totalIncome - totalPayouts;
+  const netRevenue = totalIncome * 0.20; // 20% platform share (80% goes to salons)
 
   const getStatusBadge = (status: string, type: 'income' | 'outcome') => {
     const isSuccess = status === 'paid' || status === 'completed' || status === 'approved';
@@ -193,7 +193,7 @@ export function AdminFinancial() {
               <span className="text-sm font-medium text-muted-foreground">Receita Líquida</span>
             </div>
             <div className="text-3xl font-bold text-blue-700">
-              R$ {netRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              R$ {netRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Lucro da plataforma após repasses
